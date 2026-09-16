@@ -1,0 +1,26 @@
+export const IPC = {
+  recentWorkspaces: 'workspace:recent',
+  createWorkspace: 'workspace:create',
+  chooseWorkspace: 'workspace:choose',
+  openWorkspacePath: 'workspace:open-path',
+  closeWorkspace: 'workspace:close',
+  revealWorkspace: 'workspace:reveal',
+  getSettings: 'settings:get',
+  setSettings: 'settings:set',
+  listMaps: 'map:list',
+  createMap: 'map:create',
+  readMap: 'map:read',
+  saveMap: 'map:save',
+  saveMapCopy: 'map:save-copy',
+  mapHash: 'map:hash',
+  trashMap: 'map:trash',
+  createSnapshot: 'history:create',
+  listSnapshots: 'history:list',
+  restoreSnapshot: 'history:restore',
+  importAssetDialog: 'asset:import-dialog',
+  importAssetBytes: 'asset:import-bytes',
+  importMarkdown: 'markdown:import',
+  saveExport: 'export:save',
+  appFocus: 'app:focus'
+} as const
+
