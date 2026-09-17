@@ -8,3 +8,5 @@ test-results/
 *.log
 .DS_Store
 Thumbs.db
+/trial-runs/
+/原理知识/
