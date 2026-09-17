@@ -1,6 +1,7 @@
 import * as Dialog from '@radix-ui/react-dialog'
 import { ExternalLink, FileText, LoaderCircle, Plus, Trash2, X } from 'lucide-react'
 import { useState } from 'react'
+import { MAX_AI_MATERIALS, normalizeAiMaterialIds } from '@shared/ai'
 import { useAiStore } from '@renderer/stores/aiStore'
 
 function formatSize(size: number): string {
@@ -10,12 +11,17 @@ function formatSize(size: number): string {
 
 export function MaterialLibraryDialog() {
   const open = useAiStore((state) => state.materialsOpen)
+  const session = useAiStore((state) => state.session)
+  const generating = useAiStore((state) => state.generating)
   const materials = useAiStore((state) => state.materials)
   const setOpen = useAiStore((state) => state.setMaterialsOpen)
   const importMaterial = useAiStore((state) => state.importMaterial)
   const deleteMaterial = useAiStore((state) => state.deleteMaterial)
   const revealMaterial = useAiStore((state) => state.revealMaterial)
+  const toggleMaterial = useAiStore((state) => state.toggleMaterial)
   const [busy, setBusy] = useState(false)
+  const selectedIds = new Set(normalizeAiMaterialIds(session?.materialIds))
+  const selectedCount = selectedIds.size
 
   const runImport = async () => {
     setBusy(true)
@@ -46,18 +52,41 @@ export function MaterialLibraryDialog() {
           <button className="material-import-button" type="button" disabled={busy} onClick={() => void runImport()}>
             {busy ? <LoaderCircle className="spin" size={17} /> : <Plus size={17} />}导入资料
           </button>
+          <div className="material-selection-bar" aria-live="polite">
+            <span>已选择 <strong>{selectedCount}</strong>/{MAX_AI_MATERIALS} 份</span>
+            <small>
+              {!session
+                ? '当前 AI 会话尚未就绪'
+                : selectedCount >= MAX_AI_MATERIALS
+                  ? '已达到单次生成上限'
+                  : '生成时只发送勾选资料'}
+            </small>
+          </div>
           <div className="material-list">
-            {materials.length ? materials.map((item) => (
-              <div className="material-item" key={item.id}>
-                <span className="material-item__icon"><FileText size={17} /></span>
-                <span className="material-item__meta">
-                  <strong title={item.name}>{item.name}</strong>
-                  <small>{item.extension.replace('.', '').toUpperCase()} · {formatSize(item.size)} · {new Date(item.importedAt).toLocaleDateString('zh-CN')}</small>
-                </span>
-                <button className="icon-button" type="button" title="在文件管理器中显示" onClick={() => void revealMaterial(item.id)}><ExternalLink size={15} /></button>
-                <button className="icon-button icon-button--danger" type="button" title="删除资料" onClick={() => void remove(item.id, item.name)}><Trash2 size={15} /></button>
-              </div>
-            )) : <div className="material-empty">还没有课程资料。导入后可在这里长期复用。</div>}
+            {materials.length ? materials.map((item) => {
+              const selected = selectedIds.has(item.id)
+              const atLimit = !selected && selectedCount >= MAX_AI_MATERIALS
+              return (
+                <div className={`material-item${selected ? ' is-selected' : ''}`} key={item.id}>
+                  <label className="material-item__check">
+                    <input
+                      type="checkbox"
+                      aria-label={`选择资料 ${item.name}`}
+                      checked={selected}
+                      disabled={!session || generating || atLimit}
+                      onChange={() => toggleMaterial(item.id)}
+                    />
+                  </label>
+                  <span className="material-item__icon"><FileText size={17} /></span>
+                  <span className="material-item__meta">
+                    <strong title={item.name}>{item.name}</strong>
+                    <small>{item.extension.replace('.', '').toUpperCase()} · {formatSize(item.size)} · {new Date(item.importedAt).toLocaleDateString('zh-CN')}</small>
+                  </span>
+                  <button className="icon-button" type="button" title="在文件管理器中显示" onClick={() => void revealMaterial(item.id)}><ExternalLink size={15} /></button>
+                  <button className="icon-button icon-button--danger" type="button" title="删除资料" onClick={() => void remove(item.id, item.name)}><Trash2 size={15} /></button>
+                </div>
+              )
+            }) : <div className="material-empty">还没有课程资料。导入后可在这里长期复用。</div>}
           </div>
         </Dialog.Content>
       </Dialog.Portal>

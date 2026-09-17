@@ -1,5 +1,10 @@
 import { create } from 'zustand'
-import { collectAiMapContext, createAiSession } from '@shared/ai'
+import {
+  collectAiMapContext,
+  createAiSession,
+  normalizeAiMaterialIds,
+  toggleAiMaterialId
+} from '@shared/ai'
 import type {
   AiConfigInput,
   AiMessage,
@@ -147,8 +152,11 @@ export const useAiStore = create<AiState>((set, get) => {
     loadForActiveMap: async () => {
       const mapId = useWorkspaceStore.getState().activeMapId
       if (!mapId) {
-        const draftId = get().session?.draftId ?? crypto.randomUUID()
-        const session = get().session?.draftId ? get().session! : createAiSession(null, draftId)
+        const current = get().session
+        const draftId = current?.draftId ?? crypto.randomUUID()
+        const session = current?.draftId
+          ? { ...current, materialIds: normalizeAiMaterialIds(current.materialIds) }
+          : createAiSession(null, draftId)
         set({ session, loading: false })
         return
       }
@@ -163,11 +171,13 @@ export const useAiStore = create<AiState>((set, get) => {
         return
       }
       const selectedNodeId = useMapStore.getState().selectedNodeId
-      const session = result.value ?? {
-        ...createAiSession(mapId, null),
-        mode: selectedNodeId ? 'extend' : 'new',
-        targetNodeId: selectedNodeId
-      }
+      const session = result.value
+        ? { ...result.value, materialIds: normalizeAiMaterialIds(result.value.materialIds) }
+        : {
+            ...createAiSession(mapId, null),
+            mode: selectedNodeId ? ('extend' as const) : ('new' as const),
+            targetNodeId: selectedNodeId
+          }
       set({ session, loading: false, error: null })
     },
 
@@ -186,7 +196,8 @@ export const useAiStore = create<AiState>((set, get) => {
         const draftId = crypto.randomUUID()
         const draft = {
           ...createAiSession(null, draftId),
-          mode: 'new' as const
+          mode: 'new' as const,
+          materialIds: normalizeAiMaterialIds(current.materialIds)
         }
         set({ session: draft, error: null })
         await persist(draft)
@@ -203,12 +214,19 @@ export const useAiStore = create<AiState>((set, get) => {
         set({ error: result.error.message })
         return
       }
-      const session = result.value ?? {
-        ...createAiSession(mapId, null),
+      const session = result.value
+        ? { ...result.value, materialIds: normalizeAiMaterialIds(result.value.materialIds) }
+        : {
+            ...createAiSession(mapId, null),
+            mode: 'extend' as const,
+            targetNodeId: selectedNodeId
+          }
+      const next = {
+        ...session,
         mode: 'extend' as const,
-        targetNodeId: selectedNodeId
+        targetNodeId: selectedNodeId,
+        materialIds: normalizeAiMaterialIds(current.materialIds)
       }
-      const next = { ...session, mode: 'extend' as const, targetNodeId: selectedNodeId }
       set({ session: next, error: null })
       await persist(next)
     },
@@ -237,9 +255,7 @@ export const useAiStore = create<AiState>((set, get) => {
     toggleMaterial: (id) => {
       const session = get().session
       if (!session || get().generating) return
-      const materialIds = session.materialIds.includes(id)
-        ? session.materialIds.filter((item) => item !== id)
-        : [...session.materialIds, id].slice(0, 10)
+      const materialIds = toggleAiMaterialId(session.materialIds, id)
       setSession({ ...session, materialIds })
     },
 
@@ -415,7 +431,10 @@ export const useAiStore = create<AiState>((set, get) => {
         return
       }
       const session = get().session
-      if (session?.materialIds.includes(id)) setSession({ ...session, materialIds: session.materialIds.filter((item) => item !== id) })
+      if (session) {
+        const materialIds = normalizeAiMaterialIds(session.materialIds)
+        if (materialIds.includes(id)) setSession({ ...session, materialIds: materialIds.filter((item) => item !== id) })
+      }
       await get().loadMaterials()
     },
 

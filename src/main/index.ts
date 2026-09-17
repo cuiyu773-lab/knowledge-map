@@ -107,6 +107,9 @@ function registerIpc(): void {
 }
 
 function createWindow(): void {
+  const windowIcon = app.isPackaged
+    ? join(process.resourcesPath, 'icon.ico')
+    : join(currentDirectory, '../../build/icon.ico')
   mainWindow = new BrowserWindow({
     width: 1480,
     height: 940,
@@ -115,6 +118,7 @@ function createWindow(): void {
     show: false,
     backgroundColor: '#e8dcc7',
     title: '知图',
+    icon: windowIcon,
     webPreferences: {
       preload: join(currentDirectory, '../preload/index.cjs'),
       contextIsolation: true,

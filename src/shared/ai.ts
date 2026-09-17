@@ -13,6 +13,27 @@ import { getChildren, getNodePath } from './tree'
 const MAX_PREVIEW_NODES = 100
 const MAP_CONTEXT_LIMIT = 20_000
 
+export const MAX_AI_MATERIALS = 10
+
+export function normalizeAiMaterialIds(value: unknown, max = MAX_AI_MATERIALS): string[] {
+  if (!Array.isArray(value)) return []
+  const ids = new Set<string>()
+  for (const item of value) {
+    if (typeof item !== 'string') continue
+    const id = item.trim()
+    if (!id || ids.has(id)) continue
+    ids.add(id)
+    if (ids.size >= max) break
+  }
+  return [...ids]
+}
+
+export function toggleAiMaterialId(value: unknown, id: string, max = MAX_AI_MATERIALS): string[] {
+  const ids = normalizeAiMaterialIds(value, max)
+  if (ids.includes(id)) return ids.filter((item) => item !== id)
+  return [...ids, id].slice(0, max)
+}
+
 function createId(): string {
   if (typeof globalThis.crypto?.randomUUID === 'function') return globalThis.crypto.randomUUID()
   return `${Date.now()}-${Math.random().toString(36).slice(2)}`

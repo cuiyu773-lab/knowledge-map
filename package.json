@@ -1,6 +1,6 @@
 {
   "name": "zhitu-study-map",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "知图 - 本地优先的桌面学习思维导图工具",
   "main": "out/main/index.js",
   "type": "module",
@@ -30,15 +30,24 @@
       "target": [
         "nsis",
         "portable"
-      ]
+      ],
+      "icon": "build/icon.ico"
     },
     "nsis": {
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "shortcutName": "知图"
-    }
+      "shortcutName": "知图",
+      "installerIcon": "build/icon.ico",
+      "uninstallerIcon": "build/icon.ico"
+    },
+    "extraResources": [
+      {
+        "from": "build/icon.ico",
+        "to": "icon.ico"
+      }
+    ]
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",

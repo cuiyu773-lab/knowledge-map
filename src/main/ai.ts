@@ -2,7 +2,7 @@ import { app, dialog, net, safeStorage, shell } from 'electron'
 import { createHash } from 'node:crypto'
 import { promises as fs } from 'node:fs'
 import path from 'node:path'
-import { parseAiPreview, parseAiQuestions, parseModelJson } from '@shared/ai'
+import { MAX_AI_MATERIALS, parseAiPreview, parseAiQuestions, parseModelJson } from '@shared/ai'
 import type {
   AiConfigInput,
   AiConsultRequest,
@@ -21,7 +21,6 @@ import type { WorkspaceService } from './workspace'
 const CHUNK_CHARS = 12_000
 const SUMMARY_CHARS = 1_500
 const MATERIAL_CONTEXT_CHARS = 30_000
-const MAX_MATERIALS_PER_RUN = 10
 const MAX_TOTAL_MATERIAL_CHARS = 1_500_000
 const MODEL_TIMEOUT_MS = 90_000
 
@@ -505,7 +504,7 @@ export class AiService {
     onProgress: ProgressCallback,
     progressId: string
   ): Promise<string> {
-    const uniqueIds = [...new Set(materialIds)].slice(0, MAX_MATERIALS_PER_RUN)
+    const uniqueIds = [...new Set(materialIds)].slice(0, MAX_AI_MATERIALS)
     if (!uniqueIds.length) return ''
     const records = await this.readMaterialIndex()
     const selected = uniqueIds

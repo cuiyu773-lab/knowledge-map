@@ -1,11 +1,14 @@
 import { describe, expect, it } from 'vitest'
 import {
+  MAX_AI_MATERIALS,
   applyAiPreview,
   collectAiMapContext,
   createRootFromAiPreview,
+  normalizeAiMaterialIds,
   parseAiPreview,
   parseAiQuestions,
-  parseModelJson
+  parseModelJson,
+  toggleAiMaterialId
 } from '@shared/ai'
 import { createMindMapDocument, createNode } from '@shared/schema'
 import type { AiPreview } from '@shared/types'
@@ -33,6 +36,22 @@ describe('AI 大纲处理', () => {
     expect(parsed.title).toBe('算法')
     expect(parsed.children[0]?.children[0]?.title).toBe('快速排序')
     expect(parsed.children[0]?.included).toBe(true)
+  })
+
+  it('规范化资料选择并限制最多十份', () => {
+    expect(normalizeAiMaterialIds(undefined)).toEqual([])
+    expect(normalizeAiMaterialIds(['material-a', '', 'material-a', null, 'material-b'])).toEqual([
+      'material-a',
+      'material-b'
+    ])
+
+    const selected = Array.from({ length: MAX_AI_MATERIALS + 2 }, (_, index) => `material-${index}`).reduce(
+      (ids, id) => toggleAiMaterialId(ids, id),
+      [] as string[]
+    )
+    expect(selected).toHaveLength(MAX_AI_MATERIALS)
+    expect(selected).not.toContain(`material-${MAX_AI_MATERIALS}`)
+    expect(toggleAiMaterialId(selected, selected[0]!)).not.toContain(selected[0])
   })
 
   it('追加、替换和智能合并均保持节点结构有效', () => {
