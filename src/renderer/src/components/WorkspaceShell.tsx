@@ -4,6 +4,7 @@ import { getCanvasCommands } from '@renderer/lib/canvasBridge'
 import { useMapStore } from '@renderer/stores/mapStore'
 import { useWorkspaceStore } from '@renderer/stores/workspaceStore'
 import { CommandBar } from './CommandBar'
+import { AiDrawer } from './AiDrawer'
 import { MindMapCanvas } from './MindMapCanvas'
 import { NodeInspector } from './NodeInspector'
 import { OutlineView } from './OutlineView'
@@ -167,6 +168,7 @@ export function WorkspaceShell() {
         <span className="status-bar__spacer" />
         <span>{saving ? <><LoaderCircle className="spin" size={13} />正在保存</> : dirty ? '有未保存修改' : '本地文件已同步'}</span>
       </footer>
+      <AiDrawer />
       {busy && <div className="busy-overlay"><LoaderCircle className="spin" size={22} />正在处理…</div>}
     </div>
   )

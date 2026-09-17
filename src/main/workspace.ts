@@ -21,6 +21,9 @@ import type {
   WorkspaceDescriptor,
   WorkspaceMeta
 } from '@shared/types'
+import { AppError } from './errors'
+
+export { AppError } from './errors'
 
 const IMAGE_TYPES = new Map([
   ['.png', 'image/png'],
@@ -29,16 +32,6 @@ const IMAGE_TYPES = new Map([
   ['.webp', 'image/webp'],
   ['.gif', 'image/gif']
 ])
-
-export class AppError extends Error {
-  constructor(
-    public readonly code: string,
-    message: string,
-    public readonly detail?: string
-  ) {
-    super(message)
-  }
-}
 
 function nowIso(): string {
   return new Date().toISOString()
@@ -333,6 +326,8 @@ export class WorkspaceService {
   async trashMap(mapId: string): Promise<void> {
     await this.createSnapshot(mapId)
     await shell.trashItem(this.mapPath(mapId))
+    const sessionPath = path.join(this.assertOpen(), 'maps', `${mapId}.ai-session.json`)
+    await shell.trashItem(sessionPath).catch(() => undefined)
     await this.syncMapOrder()
   }
 

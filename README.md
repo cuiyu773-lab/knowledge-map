@@ -12,6 +12,8 @@
 - 编辑停止 800ms 后原子保存；每 5 分钟以及删除前生成恢复快照。
 - 支持从 Markdown 导入标题、列表和本地图片，导出 PNG、SVG、PDF。
 - 支持工作区内全文搜索、最近工作区、外部文件冲突检测和系统回收站删除。
+- 支持 OpenAI 兼容的 AI 制作：对话追问后生成大纲、编辑预览，并创建新导图或追加、替换、合并到现有节点。
+- 工作区资料库支持 PDF、DOCX、PPTX、Markdown 和 TXT；选中的资料会按需解析并发送给用户配置的模型服务。
 
 ## 开发
 
@@ -55,11 +57,22 @@ npm run package:win
 │  └─ <uuid>.mindmap.json
 ├─ assets/
 │  └─ <sha256>.<ext>
+├─ materials/
+│  ├─ index.json
+│  └─ files/<sha256>.<ext>
 └─ .history/
    └─ <mapId>/<timestamp>.snapshot.json
 ```
 
 `workspace.json` 保存工作区元数据和导图顺序；每张导图是独立 JSON 文件；图片以内容哈希命名，避免重复和覆盖。
+
+AI 会话保存在 `maps/<mapId>.ai-session.json`，不会写入导图正文或导出文件。
+
+## AI 配置
+
+在“AI 配置”中填写 OpenAI 兼容服务的 Base URL、模型名称和 API Key。Base URL 可以是服务根地址，也可以直接填写完整的 `/chat/completions` 地址；本地服务允许不填写 API Key。
+
+API Key 使用 Electron `safeStorage` 加密保存在用户数据目录，不会暴露给渲染页面。只有勾选数据发送确认后，知图才会把所选资料文本、当前导图上下文和对话发送到用户填写的服务地址。
 
 ## 快捷键
 
@@ -86,4 +99,4 @@ npm run package:win
 
 ## 首版边界
 
-当前版本不包含账号、云同步、协作、AI 整理、复习提醒、音视频附件、跨导图引用或 XMind/FreeMind 互导。
+当前版本不包含账号、云同步、协作、图片 OCR、复习提醒、音视频附件、跨导图引用或 XMind/FreeMind 互导。

@@ -1,19 +1,25 @@
 import { app, BrowserWindow, ipcMain, net, protocol, shell } from 'electron'
+import type { IpcMainInvokeEvent } from 'electron'
 import { dirname, join } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { IPC } from '@shared/ipc'
 import type {
+  AiConfigInput,
+  AiConsultRequest,
+  AiGenerateRequest,
   ApiResult,
   AppSettings,
   ExportRequest,
   MindMapDocument,
   WorkspaceDescriptor
 } from '@shared/types'
+import { AiService } from './ai'
 import { AppError, WorkspaceService } from './workspace'
 
 const currentDirectory = dirname(fileURLToPath(import.meta.url))
 if (process.env.ZHITU_USER_DATA) app.setPath('userData', process.env.ZHITU_USER_DATA)
 const service = new WorkspaceService()
+const aiService = new AiService(service)
 let mainWindow: BrowserWindow | null = null
 
 protocol.registerSchemesAsPrivileged([
@@ -37,6 +43,19 @@ function handle<T>(channel: string, callback: (...args: any[]) => Promise<T> | T
   ipcMain.handle(channel, async (_event, ...args) => {
     try {
       return { ok: true, value: await callback(...args) }
+    } catch (error) {
+      return errorResult(error)
+    }
+  })
+}
+
+function handleWithEvent<T>(
+  channel: string,
+  callback: (event: IpcMainInvokeEvent, ...args: any[]) => Promise<T> | T
+): void {
+  ipcMain.handle(channel, async (event, ...args) => {
+    try {
+      return { ok: true, value: await callback(event, ...args) }
     } catch (error) {
       return errorResult(error)
     }
@@ -68,6 +87,23 @@ function registerIpc(): void {
   handle(IPC.importAssetBytes, (bytes: number[], name: string) => service.importAssetBytes(bytes, name))
   handle(IPC.importMarkdown, () => service.importMarkdown())
   handle(IPC.saveExport, (request: ExportRequest) => service.saveExport(request))
+  handle(IPC.aiGetConfig, () => aiService.getConfig())
+  handle(IPC.aiSaveConfig, (input: AiConfigInput) => aiService.saveConfig(input))
+  handle(IPC.aiTestConnection, (input?: AiConfigInput) => aiService.testConnection(input))
+  handle(IPC.aiSessionRead, (mapId: string | null, draftId: string | null) => aiService.readSession(mapId, draftId))
+  handle(IPC.aiSessionWrite, (session) => aiService.writeSession(session))
+  handle(IPC.aiSessionClear, (mapId: string | null, draftId: string | null) => aiService.clearSession(mapId, draftId))
+  handleWithEvent(IPC.aiConsult, (event, request: AiConsultRequest) =>
+    aiService.consult(request, (progress) => event.sender.send(IPC.aiProgress, progress))
+  )
+  handleWithEvent(IPC.aiGenerate, (event, request: AiGenerateRequest) =>
+    aiService.generate(request, (progress) => event.sender.send(IPC.aiProgress, progress))
+  )
+  handle(IPC.aiCancel, (progressId: string) => aiService.cancel(progressId))
+  handle(IPC.materialsList, () => aiService.listMaterials())
+  handle(IPC.materialsImportDialog, () => aiService.importMaterialDialog())
+  handle(IPC.materialsDelete, (id: string) => aiService.deleteMaterial(id))
+  handle(IPC.materialsReveal, (id: string) => aiService.revealMaterial(id))
 }
 
 function createWindow(): void {

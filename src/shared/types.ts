@@ -130,3 +130,111 @@ export interface AppSettings {
   panels: PanelVisibility
   lastWorkspacePath?: string
 }
+
+export type AiMode = 'new' | 'extend'
+export type AiScale = 'concise' | 'standard' | 'detailed'
+export type AiPreviewStrategy = 'append' | 'replace' | 'merge'
+
+export interface AiQuestion {
+  id: string
+  question: string
+  options?: string[]
+}
+
+export interface AiMessage {
+  id: string
+  role: 'user' | 'assistant'
+  kind: 'text' | 'questions' | 'preview'
+  content: string
+  questions?: AiQuestion[]
+  createdAt: string
+}
+
+export interface AiPreviewNode {
+  id: string
+  title: string
+  summary: string
+  included: boolean
+  children: AiPreviewNode[]
+}
+
+export interface AiPreview {
+  title: string
+  summary: string
+  children: AiPreviewNode[]
+  targetNodeId?: string
+  createdAt: string
+}
+
+export interface AiSession {
+  schemaVersion: 1
+  mapId: string | null
+  draftId: string | null
+  targetNodeId: string | null
+  mode: AiMode
+  scale: AiScale
+  includeFullMap: boolean
+  materialIds: string[]
+  messages: AiMessage[]
+  pendingQuestions: AiQuestion[]
+  clarificationRound: number
+  pendingPreview: AiPreview | null
+  updatedAt: string
+}
+
+export interface AiPublicConfig {
+  baseUrl: string
+  model: string
+  hasApiKey: boolean
+  dataConsent: boolean
+}
+
+export interface AiConfigInput {
+  baseUrl: string
+  model: string
+  apiKey?: string
+  clearApiKey?: boolean
+  dataConsent: boolean
+}
+
+export interface AiQuestionAnswer {
+  id: string
+  answer: string
+}
+
+export interface AiConsultRequest {
+  session: AiSession
+  prompt: string
+  answers: AiQuestionAnswer[]
+  mapContext: string
+  progressId: string
+}
+
+export interface AiConsultResult {
+  kind: 'questions' | 'ready'
+  questions: AiQuestion[]
+  round: number
+  assistantText: string
+}
+
+export interface AiGenerateRequest {
+  session: AiSession
+  mapContext: string
+  progressId: string
+}
+
+export interface AiProgress {
+  progressId: string
+  stage: 'extracting' | 'summarizing' | 'thinking' | 'generating'
+  message: string
+  current?: number
+  total?: number
+}
+
+export interface MaterialSummary {
+  id: string
+  name: string
+  extension: string
+  size: number
+  importedAt: string
+}

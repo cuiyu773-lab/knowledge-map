@@ -6,12 +6,16 @@ import path from 'node:path'
 test('可启动、打开工作区、编辑节点并自动保存', async () => {
   const root = await mkdtemp(path.join(tmpdir(), 'zhitu-e2e-'))
   const userData = path.join(root, 'user-data')
+  const localAppData = path.join(root, 'local-app-data')
+  const appData = path.join(root, 'app-data')
   const workspace = path.join(root, '学习工作区')
   await Promise.all([
     mkdir(path.join(workspace, 'maps'), { recursive: true }),
     mkdir(path.join(workspace, 'assets'), { recursive: true }),
     mkdir(path.join(workspace, '.history'), { recursive: true }),
-    mkdir(userData, { recursive: true })
+    mkdir(userData, { recursive: true }),
+    mkdir(localAppData, { recursive: true }),
+    mkdir(appData, { recursive: true })
   ])
   const now = new Date().toISOString()
   await writeFile(
@@ -36,8 +40,8 @@ test('可启动、打开工作区、编辑节点并自动保存', async () => {
   )
 
   const app = await electron.launch({
-    args: ['.'],
-    env: { ...process.env, ZHITU_USER_DATA: userData }
+    args: ['--no-sandbox', '--disable-gpu', '--disable-gpu-sandbox', '--disable-software-rasterizer', '.'],
+    env: { ...process.env, ZHITU_USER_DATA: userData, LOCALAPPDATA: localAppData, APPDATA: appData }
   })
   const page = await app.firstWindow()
   await expect(page.getByText('把知识画成', { exact: false })).toBeVisible()

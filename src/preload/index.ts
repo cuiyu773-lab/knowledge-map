@@ -3,9 +3,18 @@ import { IPC } from '@shared/ipc'
 import type {
   ApiResult,
   AppSettings,
+  AiConfigInput,
+  AiConsultRequest,
+  AiConsultResult,
+  AiGenerateRequest,
+  AiPreview,
+  AiProgress,
+  AiPublicConfig,
+  AiSession,
   ExportRequest,
   MapReadResult,
   MapSummary,
+  MaterialSummary,
   MindMapDocument,
   RecentWorkspace,
   SnapshotSummary,
@@ -54,6 +63,30 @@ const api = {
   },
   exports: {
     save: (request: ExportRequest) => invoke<string | null>(IPC.saveExport, request)
+  },
+  ai: {
+    getConfig: () => invoke<AiPublicConfig>(IPC.aiGetConfig),
+    saveConfig: (input: AiConfigInput) => invoke<AiPublicConfig>(IPC.aiSaveConfig, input),
+    testConnection: (input?: AiConfigInput) => invoke<void>(IPC.aiTestConnection, input),
+    readSession: (mapId: string | null, draftId: string | null) =>
+      invoke<AiSession | null>(IPC.aiSessionRead, mapId, draftId),
+    writeSession: (session: AiSession) => invoke<void>(IPC.aiSessionWrite, session),
+    clearSession: (mapId: string | null, draftId: string | null) =>
+      invoke<void>(IPC.aiSessionClear, mapId, draftId),
+    consult: (request: AiConsultRequest) => invoke<AiConsultResult>(IPC.aiConsult, request),
+    generate: (request: AiGenerateRequest) => invoke<AiPreview>(IPC.aiGenerate, request),
+    cancel: (progressId: string) => invoke<void>(IPC.aiCancel, progressId),
+    onProgress: (callback: (progress: AiProgress) => void) => {
+      const listener = (_event: Electron.IpcRendererEvent, progress: AiProgress) => callback(progress)
+      ipcRenderer.on(IPC.aiProgress, listener)
+      return () => { ipcRenderer.removeListener(IPC.aiProgress, listener) }
+    }
+  },
+  materials: {
+    list: () => invoke<MaterialSummary[]>(IPC.materialsList),
+    importDialog: () => invoke<MaterialSummary | null>(IPC.materialsImportDialog),
+    delete: (id: string) => invoke<void>(IPC.materialsDelete, id),
+    reveal: (id: string) => invoke<void>(IPC.materialsReveal, id)
   },
   onFocus: (callback: () => void) => {
     const listener = () => callback()

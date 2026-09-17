@@ -1,5 +1,6 @@
 import { useEffect } from 'react'
 import { LoaderCircle } from 'lucide-react'
+import { useAiStore } from '@renderer/stores/aiStore'
 import { useWorkspaceStore } from '@renderer/stores/workspaceStore'
 import { ConflictDialog } from './components/ConflictDialog'
 import { SearchOverlay } from './components/SearchOverlay'
@@ -21,6 +22,8 @@ export function App() {
   useEffect(() => {
     document.documentElement.dataset.theme = settings.theme
   }, [settings.theme])
+
+  useEffect(() => window.zhitu.ai.onProgress((progress) => useAiStore.getState().receiveProgress(progress)), [])
 
   if (initializing) {
     return <div className="app-loading"><LoaderCircle className="spin" size={28} /><span>正在打开知图…</span></div>

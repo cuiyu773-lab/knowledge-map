@@ -21,6 +21,20 @@ export const IPC = {
   importAssetBytes: 'asset:import-bytes',
   importMarkdown: 'markdown:import',
   saveExport: 'export:save',
+  aiGetConfig: 'ai:config:get',
+  aiSaveConfig: 'ai:config:save',
+  aiTestConnection: 'ai:config:test',
+  aiSessionRead: 'ai:session:read',
+  aiSessionWrite: 'ai:session:write',
+  aiSessionClear: 'ai:session:clear',
+  aiConsult: 'ai:consult',
+  aiGenerate: 'ai:generate',
+  aiCancel: 'ai:cancel',
+  aiProgress: 'ai:progress',
+  materialsList: 'materials:list',
+  materialsImportDialog: 'materials:import-dialog',
+  materialsDelete: 'materials:delete',
+  materialsReveal: 'materials:reveal',
   appFocus: 'app:focus'
 } as const
 

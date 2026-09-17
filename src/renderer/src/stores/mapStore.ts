@@ -1,5 +1,6 @@
 import { create } from 'zustand'
-import type { MindMapDocument, NodeStyle } from '@shared/types'
+import type { AiPreview, AiPreviewStrategy, MindMapDocument, NodeStyle } from '@shared/types'
+import { applyAiPreview, createRootFromAiPreview } from '@shared/ai'
 import {
   deleteSubtree,
   insertChild,
@@ -41,6 +42,8 @@ interface MapState {
   clearOffsets: () => void
   setViewport: (viewport: MindMapDocument['viewport']) => void
   setDocumentTitle: (title: string) => void
+  applyGeneratedPreview: (targetNodeId: string, preview: AiPreview, strategy: AiPreviewStrategy) => void
+  applyGeneratedRoot: (preview: AiPreview) => void
   undo: () => void
   redo: () => void
   save: (force?: boolean) => Promise<boolean>
@@ -213,6 +216,18 @@ export const useMapStore = create<MapState>((set, get) => {
       const document = get().document
       if (!document) return
       apply({ ...document, title }, get().selectedNodeId ?? undefined)
+    },
+
+    applyGeneratedPreview: (targetNodeId, preview, strategy) => {
+      const document = get().document
+      if (!document || !document.nodes[targetNodeId]) return
+      apply(applyAiPreview(document, targetNodeId, preview, strategy), targetNodeId)
+    },
+
+    applyGeneratedRoot: (preview) => {
+      const document = get().document
+      if (!document) return
+      apply(createRootFromAiPreview(document, preview), document.rootId)
     },
 
     undo: () => {

@@ -14,11 +14,13 @@ import {
   Redo2,
   Save,
   Search,
+  Sparkles,
   Sun,
   Trash2,
   Undo2
 } from 'lucide-react'
 import { getCanvasCommands } from '@renderer/lib/canvasBridge'
+import { useAiStore } from '@renderer/stores/aiStore'
 import { useMapStore } from '@renderer/stores/mapStore'
 import { useWorkspaceStore } from '@renderer/stores/workspaceStore'
 
@@ -50,6 +52,10 @@ export function CommandBar() {
   const past = useMapStore((state) => state.past)
   const future = useMapStore((state) => state.future)
   const activeMap = descriptor?.maps.find((map) => map.id === activeMapId)
+  const openAi = useAiStore((state) => state.openDrawer)
+  const aiGenerating = useAiStore((state) => state.generating)
+  const setAiConfigOpen = useAiStore((state) => state.setConfigOpen)
+  const setMaterialsOpen = useAiStore((state) => state.setMaterialsOpen)
 
   const exportMap = async (format: 'png' | 'svg' | 'pdf') => {
     await useMapStore.getState().save()
@@ -80,7 +86,7 @@ export function CommandBar() {
 
       <DropdownMenu.Root>
         <DropdownMenu.Trigger asChild>
-          <button className="map-switcher" type="button">
+          <button className="map-switcher" type="button" disabled={aiGenerating}>
             <span>{activeMap?.title ?? '未选择导图'}</span>
             <ChevronDown size={14} />
           </button>
@@ -89,13 +95,13 @@ export function CommandBar() {
           <DropdownMenu.Content className="menu-content" sideOffset={8} align="start">
             <DropdownMenu.Label className="menu-label">{descriptor?.meta.name}</DropdownMenu.Label>
             {descriptor?.maps.map((map) => (
-              <DropdownMenu.Item key={map.id} className="menu-item" onSelect={() => void selectMap(map.id)}>
+              <DropdownMenu.Item key={map.id} className="menu-item" disabled={aiGenerating} onSelect={() => void selectMap(map.id)}>
                 <span className="menu-item__title">{map.title}</span>
                 <small>{map.nodeCount} 节点</small>
               </DropdownMenu.Item>
             ))}
             <DropdownMenu.Separator className="menu-separator" />
-            <DropdownMenu.Item className="menu-item" onSelect={() => void newMap()}>
+            <DropdownMenu.Item className="menu-item" disabled={aiGenerating} onSelect={() => void newMap()}>
               <FilePlus2 size={15} />新建导图
             </DropdownMenu.Item>
           </DropdownMenu.Content>
@@ -120,6 +126,10 @@ export function CommandBar() {
         <button className="icon-button" type="button" title="重做 Ctrl+Y" disabled={!future.length} onClick={() => useMapStore.getState().redo()}><Redo2 size={17} /></button>
         <button className="icon-button" type="button" title="搜索 Ctrl+F" onClick={() => setSearchOpen(true)}><Search size={17} /></button>
       </div>
+
+      <button className="button button--small button--ai" type="button" onClick={() => void openAi()}>
+        <Sparkles size={15} />AI 制作
+      </button>
 
       <div className="command-group command-group--right">
         <button className="icon-button" type="button" title="大纲面板" onClick={() => togglePanel('outline')}><PanelLeft size={17} /></button>
@@ -150,11 +160,13 @@ export function CommandBar() {
           <DropdownMenu.Portal>
             <DropdownMenu.Content className="menu-content" sideOffset={7} align="end">
               <DropdownMenu.Item className="menu-item" onSelect={() => void importMarkdown()}><Import size={15} />导入 Markdown</DropdownMenu.Item>
-              <DropdownMenu.Item className="menu-item" onSelect={() => void newMap()}><FilePlus2 size={15} />新建导图</DropdownMenu.Item>
+              <DropdownMenu.Item className="menu-item" onSelect={() => setMaterialsOpen(true)}><Import size={15} />课程资料库</DropdownMenu.Item>
+              <DropdownMenu.Item className="menu-item" onSelect={() => setAiConfigOpen(true)}><Sparkles size={15} />AI 配置</DropdownMenu.Item>
+              <DropdownMenu.Item className="menu-item" disabled={aiGenerating} onSelect={() => void newMap()}><FilePlus2 size={15} />新建导图</DropdownMenu.Item>
               <DropdownMenu.Item className="menu-item" onSelect={() => void window.zhitu.workspace.reveal(descriptor?.path ?? '')}><FolderOpen size={15} />在文件管理器中显示</DropdownMenu.Item>
               <DropdownMenu.Separator className="menu-separator" />
-              <DropdownMenu.Item className="menu-item menu-item--danger" onSelect={() => void removeMap()}><Trash2 size={15} />删除当前导图</DropdownMenu.Item>
-              <DropdownMenu.Item className="menu-item" onSelect={() => void leaveWorkspace()}>关闭工作区</DropdownMenu.Item>
+              <DropdownMenu.Item className="menu-item menu-item--danger" disabled={aiGenerating} onSelect={() => void removeMap()}><Trash2 size={15} />删除当前导图</DropdownMenu.Item>
+              <DropdownMenu.Item className="menu-item" disabled={aiGenerating} onSelect={() => void leaveWorkspace()}>关闭工作区</DropdownMenu.Item>
             </DropdownMenu.Content>
           </DropdownMenu.Portal>
         </DropdownMenu.Root>

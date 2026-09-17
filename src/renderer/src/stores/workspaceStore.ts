@@ -33,7 +33,7 @@ interface WorkspaceState {
   openWorkspace: (workspacePath: string) => Promise<boolean>
   closeWorkspace: () => Promise<void>
   selectMap: (mapId: string) => Promise<void>
-  createMap: (title?: string) => Promise<void>
+  createMap: (title?: string) => Promise<MapSummary | null>
   importMarkdown: () => Promise<void>
   deleteMap: (mapId: string) => Promise<void>
   refreshMaps: () => Promise<void>
@@ -141,7 +141,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
     set({ busy: false })
     if (!result.ok) {
       get().showToast(result.error.message, 'error')
-      return
+      return null
     }
     set((state) => ({
       activeMapId: result.value.summary.id,
@@ -150,6 +150,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
         : null
     }))
     await useMapStore.getState().loadDocument(result.value.document, '', false)
+    return result.value.summary
   },
 
   importMarkdown: async () => {
