@@ -59,7 +59,7 @@ export function AiSettingsDialog() {
             <Dialog.Close asChild><button className="icon-button" type="button" aria-label="关闭"><X size={17} /></button></Dialog.Close>
           </div>
           <Dialog.Description id="ai-config-description" className="dialog-description">
-            知图使用 OpenAI 兼容的 Chat Completions 接口。API Key 由系统安全存储保护，不会暴露给页面代码。
+            知图使用 OpenAI 兼容的 Chat Completions 接口。识别 PPTX 中的公式和几何图时，模型还需支持 image_url 图片输入。API Key 由系统安全存储保护，不会暴露给页面代码。
           </Dialog.Description>
           <form className="ai-config-form" onSubmit={submit}>
             <label className="field">

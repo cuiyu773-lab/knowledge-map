@@ -1,6 +1,9 @@
 import { strToU8, zipSync } from 'fflate'
+import { mkdtemp, mkdir, writeFile } from 'node:fs/promises'
+import os from 'node:os'
+import path from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { extractMaterialText } from '../src/main/materialParser'
+import { extractMaterialContent, extractMaterialText } from '../src/main/materialParser'
 
 describe('课程资料解析', () => {
   it('读取 Markdown 和 UTF-16 文本', async () => {
@@ -50,3 +53,59 @@ describe('课程资料解析', () => {
     await expect(extractMaterialText(Buffer.from('x'), 'data.xlsx')).rejects.toThrow('暂不支持')
   })
 })
+
+  it('为 PPTX 中的 WMF/EMF 插入视觉槽位并保持顺序', async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), 'zhitu-material-'))
+    const derived = path.join(root, 'derived')
+    await mkdir(derived, { recursive: true })
+    await writeFile(
+      path.join(derived, 'manifest.json'),
+      JSON.stringify({
+        schemaVersion: 1,
+        helperVersion: '1.0.0',
+        sourceHash: 'source-hash',
+        requestedDpi: 576,
+        maxSide: 4096,
+        maxPixels: 16_000_000,
+        warnings: [],
+        objects: [
+          {
+            id: 'slide-001-object-001',
+            slideNumber: 1,
+            relationshipId: 'rId2',
+            sourceMediaPath: 'ppt/media/image1.wmf',
+            sourceKind: 'wmf',
+            sourceFile: 'slide-001-object-001.wmf',
+            pngFile: 'slide-001-object-001.png',
+            sourceSha256: 'source-image-hash',
+            pngSha256: 'png-hash',
+            width: 800,
+            height: 300
+          }
+        ]
+      }),
+      'utf8'
+    )
+    const slide = strToU8(
+      '<p:sld xmlns:p="p" xmlns:a="a" xmlns:r="r"><p:cSld><p:spTree><p:sp><p:txBody><a:p><a:r><a:t>公式前</a:t></a:r></a:p></p:txBody></p:sp><p:pic><p:blipFill><a:blip r:embed="rId2"/></p:blipFill></p:pic><p:sp><p:txBody><a:p><a:r><a:t>公式后</a:t></a:r></a:p></p:txBody></p:sp></p:spTree></p:cSld></p:sld>'
+    )
+    const rels = strToU8(
+      '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="../media/image1.wmf"/></Relationships>'
+    )
+    const pptx = Buffer.from(zipSync({
+      'ppt/slides/slide1.xml': slide,
+      'ppt/slides/_rels/slide1.xml.rels': rels
+    }))
+
+    const result = await extractMaterialContent(pptx, 'lesson.pptx', {
+      sourceHash: 'source-hash',
+      derivedDirectory: derived,
+      renderVisuals: true
+    })
+    expect(result.text).toContain('公式前')
+    expect(result.text).toContain('[[VISUAL:slide-001-object-001]]')
+    expect(result.text).toContain('公式后')
+    expect(result.text.indexOf('公式前')).toBeLessThan(result.text.indexOf('[[VISUAL:'))
+    expect(result.text.indexOf('[[VISUAL:')).toBeLessThan(result.text.indexOf('公式后'))
+    expect(result.visuals).toHaveLength(1)
+  })

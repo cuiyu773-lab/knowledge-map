@@ -225,7 +225,7 @@ export interface AiGenerateRequest {
 
 export interface AiProgress {
   progressId: string
-  stage: 'extracting' | 'summarizing' | 'thinking' | 'generating'
+  stage: 'extracting' | 'rendering' | 'recognizing' | 'summarizing' | 'thinking' | 'generating'
   message: string
   current?: number
   total?: number

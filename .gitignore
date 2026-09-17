@@ -10,3 +10,7 @@ test-results/
 Thumbs.db
 /trial-runs/
 /原理知识/
+/build/metafile-renderer/
+/build/pyinstaller/
+/resources/__pycache__/
+/.venv-metafile/

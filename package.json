@@ -13,7 +13,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:e2e": "playwright test",
-    "package:win": "npm run build && electron-builder --win nsis portable --x64"
+    "package:win": "npm run build:metafile-renderer && npm run build && electron-builder --win nsis portable --x64",
+    "build:metafile-renderer": "node scripts/build-metafile-renderer.mjs"
   },
   "build": {
     "appId": "com.zhitu.studymap",
@@ -46,6 +47,10 @@
       {
         "from": "build/icon.ico",
         "to": "icon.ico"
+      },
+      {
+        "from": "build/metafile-renderer/metafile-renderer.exe",
+        "to": "metafile-renderer.exe"
       }
     ]
   },

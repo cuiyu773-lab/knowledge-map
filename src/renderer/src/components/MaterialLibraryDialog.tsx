@@ -47,7 +47,7 @@ export function MaterialLibraryDialog() {
             <Dialog.Close asChild><button className="icon-button" type="button" aria-label="关闭"><X size={17} /></button></Dialog.Close>
           </div>
           <Dialog.Description id="material-description" className="dialog-description">
-            支持 PDF、DOCX、PPTX、Markdown 和 TXT。文件会复制到工作区，每次生成时重新解析，不执行 OCR。
+            支持 PDF、DOCX、PPTX、Markdown 和 TXT。文件会复制到工作区，每次生成时重新解析；PPTX 中的 WMF/EMF 公式与几何图会转为高清 PNG，并交给支持视觉输入的模型识别。
           </Dialog.Description>
           <button className="material-import-button" type="button" disabled={busy} onClick={() => void runImport()}>
             {busy ? <LoaderCircle className="spin" size={17} /> : <Plus size={17} />}导入资料

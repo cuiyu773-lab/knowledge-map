@@ -48,10 +48,8 @@
 
 ## 发布产物
 
-执行 `npm run package:win` 后将生成：
-
-- `release\知图 Setup 0.2.1.exe`：Windows x64 安装程序。
-- `release\知图 0.2.1.exe`：Windows x64 免安装便携版。
+- `release\知图 Setup 0.2.1.exe`：Windows x64 安装程序，约 135.6 MiB。
+- `release\知图 0.2.1.exe`：Windows x64 免安装便携版，约 135.4 MiB。
 - `release\win-unpacked`：解包后的应用目录。
 
 SHA-256：
@@ -70,6 +68,7 @@ D5216D7B51E45949B41C6F70554F8ED0DB1B2DC7AED27661AF74BA31914FAD86  知图 Setup 0
 
 ## 已知边界
 
+- 当前安装包未进行代码签名，Windows 可能显示 SmartScreen 或“未知发布者”提示。请先核对本说明中的 SHA-256。
 - AI 功能仅支持 OpenAI 兼容的 Chat Completions 接口，不包含 Responses API 或平台专用接口适配。
 - AI 输出质量取决于所选模型和服务商，生成后请先检查预览再应用。
 - 不支持图片 OCR、扫描版 PDF 文字识别、音视频资料解析。

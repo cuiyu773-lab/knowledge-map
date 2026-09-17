@@ -14,10 +14,21 @@
 - 支持工作区内全文搜索、最近工作区、外部文件冲突检测和系统回收站删除。
 - 支持 OpenAI 兼容的 AI 制作：对话追问后生成大纲、编辑预览，并创建新导图或追加、替换、合并到现有节点。
 - 工作区资料库支持 PDF、DOCX、PPTX、Markdown 和 TXT；可通过复选框多选资料，单次最多选择 10 份，选中的内容会按需解析并发送给用户配置的模型服务。
+- PPTX 中的 WMF/EMF 公式与几何图会提取为原始附件和高清 PNG；配置支持 `image_url` 的视觉模型后，会批量转为 LaTeX/Markdown，并缓存识别结果。
 
 ## 开发
 
-环境要求：Windows、Node.js 24+、npm。
+环境要求：Windows、Node.js 24+、npm。打包 WMF/EMF 渲染器还需要 Python 3.12+。
+
+首次打包前安装冻结工具：
+
+```powershell
+python -m venv .venv-metafile
+..venv-metafileScriptspython.exe -m pip install -r resources/metafile-renderer-requirements.txt
+$env:ZHITU_PYTHON=(Resolve-Path '..venv-metafileScriptspython.exe').Path
+```
+
+如果使用系统 Python，直接执行 `python -m pip install -r resources/metafile-renderer-requirements.txt` 即可。`
 
 ```powershell
 npm install
@@ -31,6 +42,7 @@ npm run typecheck
 npm test
 npm run test:e2e
 npm run build
+npm run build:metafile-renderer
 npm run package:win
 ```
 
@@ -59,7 +71,12 @@ npm run package:win
 │  └─ <sha256>.<ext>
 ├─ materials/
 │  ├─ index.json
-│  └─ files/<sha256>.<ext>
+│  ├─ files/<sha256>.<ext>
+│  └─ derived/<materialId>/
+│     ├─ manifest.json
+│     ├─ slide-XXX-object-XXX.wmf|emf
+│     ├─ slide-XXX-object-XXX.png
+│     └─ vision-cache.json
 └─ .history/
    └─ <mapId>/<timestamp>.snapshot.json
 ```
@@ -72,7 +89,7 @@ AI 会话保存在 `maps/<mapId>.ai-session.json`，不会写入导图正文或�
 
 在“AI 配置”中填写 OpenAI 兼容服务的 Base URL、模型名称和 API Key。Base URL 可以是服务根地址，也可以直接填写完整的 `/chat/completions` 地址；本地服务允许不填写 API Key。
 
-API Key 使用 Electron `safeStorage` 加密保存在用户数据目录，不会暴露给渲染页面。只有勾选数据发送确认后，知图才会把所选资料文本、当前导图上下文和对话发送到用户填写的服务地址。
+API Key 使用 Electron `safeStorage` 加密保存在用户数据目录，不会暴露给渲染页面。只有勾选数据发送确认后，知图才会把所选资料文本、当前导图上下文、PPTX 视觉对象 PNG 和对话发送到用户填写的服务地址。识别 PPTX 视觉对象时，所选模型必须支持 OpenAI 兼容的 `image_url` 内容；不支持时保留 PNG 并降级为文字解析。
 
 ## 快捷键
 
@@ -99,4 +116,4 @@ API Key 使用 Electron `safeStorage` 加密保存在用户数据目录，不会
 
 ## 首版边界
 
-当前版本不包含账号、云同步、协作、图片 OCR、复习提醒、音视频附件、跨导图引用或 XMind/FreeMind 互导。
+当前版本不包含账号、云同步、协作、本地图片 OCR、复习提醒、音视频附件、跨导图引用或 XMind/FreeMind 互导。PPTX 中的视觉对象依赖用户配置的多模态模型，并仅在勾选资料与数据发送确认后处理。

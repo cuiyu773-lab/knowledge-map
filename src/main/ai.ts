@@ -14,7 +14,19 @@ import type {
   AiSession,
   MaterialSummary
 } from '@shared/types'
-import { extractMaterialText, MATERIAL_EXTENSIONS, MATERIAL_MAX_BYTES } from './materialParser'
+import {
+  extractMaterialContent,
+  MATERIAL_EXTENSIONS,
+  MATERIAL_MAX_BYTES,
+  type MaterialVisualDescriptor
+} from './materialParser'
+import {
+  applyVisualCaptions,
+  buildVisionPrompt,
+  parseVisionResponse,
+  visionCacheKey,
+  type VisionCaptionMap
+} from './vision'
 import { AppError } from './errors'
 import type { WorkspaceService } from './workspace'
 
@@ -39,9 +51,13 @@ interface StoredMaterial extends MaterialSummary {
   storedName: string
 }
 
+type ChatContentPart =
+  | { type: 'text'; text: string }
+  | { type: 'image_url'; image_url: { url: string; detail?: 'auto' | 'low' | 'high' } }
+
 interface ChatMessage {
   role: 'system' | 'user' | 'assistant'
-  content: string
+  content: string | ChatContentPart[]
 }
 
 interface ChatResponse {
@@ -212,6 +228,7 @@ export class AiService {
     await shell.trashItem(target).catch((error: NodeJS.ErrnoException) => {
       if (error.code !== 'ENOENT') throw error
     })
+    await fs.rm(this.derivedMaterialDirectory(record.id), { recursive: true, force: true })
     await this.writeMaterialIndex(records.filter((item) => item.id !== id))
   }
 
@@ -494,6 +511,9 @@ export class AiService {
     if (status === 401 || status === 403) throw new AppError('AI_AUTH_FAILED', 'API Key 无效或没有访问权限', suffix)
     if (status === 404) throw new AppError('AI_ENDPOINT_NOT_FOUND', '模型地址或接口路径不存在', suffix)
     if (status === 429) throw new AppError('AI_RATE_LIMITED', '模型服务请求过于频繁，请稍后重试', suffix)
+    if (status === 400 && /image_url|vision|multimodal|content.*type/i.test(detail)) {
+      throw new AppError('AI_VISION_UNSUPPORTED', '当前模型不支持图片识别，请更换支持视觉输入的模型')
+    }
     if (status >= 500) throw new AppError('AI_PROVIDER_ERROR', '模型服务暂时不可用', suffix)
     throw new AppError('AI_REQUEST_FAILED', `模型请求失败（HTTP ${status}）`, suffix)
   }
@@ -516,18 +536,51 @@ export class AiService {
     let totalChars = 0
     for (let index = 0; index < selected.length; index += 1) {
       const material = selected[index]!
+      const sourcePath = this.materialFilePath(material.storedName)
+      const derivedDirectory = this.derivedMaterialDirectory(material.id)
       onProgress({
         progressId,
-        stage: 'extracting',
-        message: `正在解析资料：${material.name}`,
+        stage: material.extension === '.pptx' ? 'rendering' : 'extracting',
+        message: material.extension === '.pptx' ? `正在提取公式与几何图：${material.name}` : `正在解析资料：${material.name}`,
         current: index + 1,
         total: selected.length
       })
-      const buffer = await fs.readFile(this.materialFilePath(material.storedName))
-      const text = await extractMaterialText(buffer, material.name)
-      totalChars += text.length
+      const buffer = await fs.readFile(sourcePath)
+      const extracted = await extractMaterialContent(buffer, material.name, {
+        sourceHash: material.hash,
+        sourcePath,
+        derivedDirectory,
+        renderVisuals: material.extension === '.pptx',
+        signal
+      })
+      let extractedText = extracted.text
+      if (extracted.warnings.length) {
+        const warnings = extracted.warnings.slice(0, 5).join('；')
+        extractedText = `【资料解析警告：${warnings}】\n${extractedText}`
+      }
+      if (extracted.visuals.length) {
+        onProgress({
+          progressId,
+          stage: 'recognizing',
+          message: `正在识别公式与几何图：${material.name}`,
+          current: index + 1,
+          total: selected.length
+        })
+        const { config, apiKey } = await this.resolveModel()
+        extractedText = await this.recognizeVisuals(
+          extractedText,
+          extracted.visuals,
+          derivedDirectory,
+          config,
+          apiKey,
+          signal,
+          onProgress,
+          progressId
+        )
+      }
+      totalChars += extractedText.length
       if (totalChars > MAX_TOTAL_MATERIAL_CHARS) throw new AppError('MATERIAL_TEXT_TOO_LARGE', '所选资料文字总量过大，请减少资料数量')
-      sections.push(`【资料：${material.name}】\n${text}`)
+      sections.push(`【资料：${material.name}】\n${extractedText}`)
     }
 
     const fullText = sections.join('\n\n')
@@ -599,6 +652,123 @@ export class AiService {
     return result
   }
 
+  private async recognizeVisuals(
+    text: string,
+    visuals: MaterialVisualDescriptor[],
+    derivedDirectory: string,
+    config: StoredAiConfig,
+    apiKey: string,
+    signal: AbortSignal,
+    onProgress: ProgressCallback,
+    progressId: string
+  ): Promise<string> {
+    const renderable = visuals.filter(
+      (visual): visual is MaterialVisualDescriptor & { pngPath: string; pngSha256: string } =>
+        Boolean(visual.pngPath && visual.pngSha256)
+    )
+    if (!renderable.length) return applyVisualCaptions(text, visuals, {})
+
+    const cachePath = path.join(derivedDirectory, 'vision-cache.json')
+    const cache = await this.readVisionCache(cachePath)
+    const pendingByKey = new Map<string, MaterialVisualDescriptor & { pngPath: string; pngSha256: string }>()
+    for (const visual of renderable) {
+      const key = visionCacheKey(visual.pngSha256, config.model)
+      if (!cache[key] && !pendingByKey.has(key)) pendingByKey.set(key, visual)
+    }
+
+    const pending = [...pendingByKey.values()]
+    let failedBatches = 0
+    for (let start = 0; start < pending.length; start += 4) {
+      if (signal.aborted) throw new AppError('AI_CANCELED', '已取消生成')
+      const batch = pending.slice(start, start + 4)
+      onProgress({
+        progressId,
+        stage: 'recognizing',
+        message: `正在识别公式与几何图：${Math.min(start + 4, pending.length)}/${pending.length}`,
+        current: Math.min(start + 4, pending.length),
+        total: pending.length
+      })
+      try {
+        const content: ChatContentPart[] = [{ type: 'text', text: buildVisionPrompt(batch) }]
+        for (const visual of batch) {
+          const buffer = await fs.readFile(visual.pngPath)
+          content.push({
+            type: 'image_url',
+            image_url: {
+              url: `data:image/png;base64,${buffer.toString('base64')}`,
+              detail: 'high'
+            }
+          })
+        }
+        const response = await this.callModel([{ role: 'user', content }], apiKey, config, signal)
+        const parsed = parseVisionResponse(response, batch)
+        if (!Object.keys(parsed).length) {
+          failedBatches += 1
+          continue
+        }
+        for (const visual of batch) {
+          const caption = parsed[visual.id]
+          if (!caption) continue
+          cache[visionCacheKey(visual.pngSha256, config.model)] = caption
+        }
+        await this.writeVisionCache(cachePath, cache)
+      } catch (error) {
+        if (error instanceof AppError && error.code === 'AI_CANCELED') throw error
+        failedBatches += 1
+        if (
+          error instanceof AppError &&
+          ['AI_VISION_UNSUPPORTED', 'AI_AUTH_FAILED', 'AI_CONFIG_MISSING', 'AI_CONSENT_REQUIRED', 'AI_NETWORK', 'AI_TIMEOUT', 'AI_RATE_LIMITED', 'AI_REQUEST_FAILED', 'AI_PROVIDER_ERROR'].includes(
+            error.code
+          )
+        ) {
+          break
+        }
+      }
+    }
+
+    const captions: VisionCaptionMap = {}
+    for (const visual of renderable) {
+      const caption = cache[visionCacheKey(visual.pngSha256, config.model)]
+      if (caption) captions[visual.id] = caption
+    }
+    const result = applyVisualCaptions(text, visuals, captions)
+    return failedBatches
+      ? `【部分 WMF/EMF 视觉识别未完成，已保留原图与占位说明】\n${result}`
+      : result
+  }
+
+  private async readVisionCache(cachePath: string): Promise<VisionCaptionMap> {
+    try {
+      const raw = await readJson<unknown>(cachePath)
+      if (!raw || typeof raw !== 'object') return {}
+      const result: VisionCaptionMap = {}
+      for (const [key, value] of Object.entries(raw as Record<string, unknown>)) {
+        if (!value || typeof value !== 'object') continue
+        const record = value as Record<string, unknown>
+        if (
+          record.kind !== 'formula' &&
+          record.kind !== 'diagram' &&
+          record.kind !== 'unknown'
+        ) {
+          continue
+        }
+        result[key] = {
+          kind: record.kind,
+          latex: typeof record.latex === 'string' ? record.latex : '',
+          markdown: typeof record.markdown === 'string' ? record.markdown : '',
+          confidence: typeof record.confidence === 'number' ? record.confidence : 0
+        }
+      }
+      return result
+    } catch {
+      return {}
+    }
+  }
+
+  private async writeVisionCache(cachePath: string, cache: VisionCaptionMap): Promise<void> {
+    await atomicWrite(cachePath, JSON.stringify(cache, null, 2))
+  }
+
   private historyText(session: AiSession): string {
     return session.messages
       .filter((message) => message.kind !== 'preview')
@@ -656,6 +826,10 @@ export class AiService {
   private materialFilePath(storedName: string): string {
     if (path.basename(storedName) !== storedName) throw new AppError('INVALID_PATH', '资料路径无效')
     return path.join(this.workspacePath(), 'materials', 'files', storedName)
+  }
+
+  private derivedMaterialDirectory(materialId: string): string {
+    return path.join(this.workspacePath(), 'materials', 'derived', safeId(materialId))
   }
 
   private sessionPath(mapId: string | null, draftId: string | null): string {
