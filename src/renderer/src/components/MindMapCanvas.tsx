@@ -127,7 +127,7 @@ function MindMapCanvasInner() {
     if (!document) return
     registerCanvasCommands({
       fitView: () => void flow.fitView({ padding: 0.22, duration: 420, maxZoom: 1.15 }),
-      exportMap: async (format) => {
+      exportMap: async (format, quality) => {
         const viewportElement = wrapperRef.current?.querySelector('.react-flow__viewport') as HTMLElement | null
         if (!viewportElement) return
         const bounds = getNodesBounds(flow.getNodes())
@@ -144,7 +144,8 @@ function MindMapCanvasInner() {
             flow.getViewport(),
             backgroundColor || '#e8dcc7',
             document.title,
-            format
+            format,
+            quality
           )
           const result = await window.zhitu.exports.save(request)
           if (!result.ok) showToast(result.error.message, 'error')

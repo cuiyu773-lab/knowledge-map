@@ -1,6 +1,9 @@
 export const SCHEMA_VERSION = 1
 
 export type ThemeMode = 'light' | 'dark'
+export type ExportFormat = 'png' | 'svg' | 'pdf'
+export type ExportQuality = 'standard' | 'high' | 'ultra'
+export const DEFAULT_EXPORT_QUALITY: ExportQuality = 'high'
 export type NodeColor = 'oat' | 'moss' | 'clay' | 'terracotta' | 'river' | 'plum' | 'ink'
 export type NodeShape = 'rounded' | 'pill' | 'rect' | 'underline'
 export type LineStyle = 'solid' | 'dashed' | 'dotted'
@@ -91,7 +94,7 @@ export interface SnapshotSummary {
 }
 
 export interface ExportRequest {
-  format: 'png' | 'svg' | 'pdf'
+  format: ExportFormat
   data: string
   defaultName: string
 }
@@ -128,6 +131,7 @@ export interface ConflictState {
 export interface AppSettings {
   theme: ThemeMode
   panels: PanelVisibility
+  exportQuality: ExportQuality
   lastWorkspacePath?: string
 }
 

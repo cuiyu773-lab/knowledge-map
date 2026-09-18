@@ -32,8 +32,12 @@ export default async function globalTeardown(): Promise<void> {
     if (!entry.isDirectory() || KEEP_DIRECTORIES.has(entry.name)) continue
     const candidate = path.resolve(root, entry.name)
     if (!candidate.startsWith(`${root}${path.sep}`)) continue
-    const candidateStat = await stat(candidate)
-    if (!candidateStat.isDirectory() || !(await isSpellingCache(candidate))) continue
-    await rm(candidate, { recursive: true, force: true })
+    try {
+      const candidateStat = await stat(candidate)
+      if (!candidateStat.isDirectory() || !(await isSpellingCache(candidate))) continue
+      await rm(candidate, { recursive: true, force: true })
+    } catch {
+      // 目录可能在系统拼写缓存清理过程中并发消失，忽略即可。
+    }
   }
 }

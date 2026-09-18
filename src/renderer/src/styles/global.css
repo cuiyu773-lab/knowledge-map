@@ -316,6 +316,8 @@ input:focus-visible, textarea:focus-visible, button:focus-visible, [contentedita
 .menu-item { display: flex; align-items: center; gap: 8px; min-height: 34px; padding: 6px 9px; border-radius: 8px; outline: none; cursor: pointer; font-size: 12px; }
 .menu-item[data-highlighted] { background: var(--surface-strong); }
 .menu-item small { margin-left: auto; color: var(--ink-faint); }
+.menu-item__indicator { width: 14px; display: grid; place-items: center; color: var(--moss); }
+.menu-item__submenu-icon { margin-left: auto; color: var(--ink-faint); }
 .menu-item__title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .menu-item--danger { color: var(--danger); }
 .menu-separator { height: 1px; margin: 5px; background: var(--line-soft); }

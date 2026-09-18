@@ -22,6 +22,7 @@ import type {
   WorkspaceMeta
 } from '@shared/types'
 import { AppError } from './errors'
+import { DEFAULT_APP_SETTINGS, normalizeAppSettings } from '@shared/settings'
 
 export { AppError } from './errors'
 
@@ -92,15 +93,16 @@ export class WorkspaceService {
 
   async readSettings(): Promise<AppSettings> {
     try {
-      return await readJson<AppSettings>(this.settingsPath)
+      return normalizeAppSettings(await readJson<unknown>(this.settingsPath))
     } catch {
-      return { theme: 'light', panels: { outline: true, inspector: true } }
+      return normalizeAppSettings(DEFAULT_APP_SETTINGS)
     }
   }
 
   async writeSettings(settings: AppSettings): Promise<AppSettings> {
-    await atomicWrite(this.settingsPath, JSON.stringify(settings, null, 2))
-    return settings
+    const normalized = normalizeAppSettings(settings)
+    await atomicWrite(this.settingsPath, JSON.stringify(normalized, null, 2))
+    return normalized
   }
 
   private async readRecents(): Promise<RecentWorkspace[]> {

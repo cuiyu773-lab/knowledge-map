@@ -1,11 +1,46 @@
-import { _electron as electron, expect, test } from '@playwright/test'
+import { _electron as electron, expect, test, type ElectronApplication, type Page } from '@playwright/test'
 import { mkdir, mkdtemp, readdir, readFile, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 
+interface ExportFileRequest {
+  label: string
+  quality: string | null
+  file: string
+}
+
+function pngDimensions(buffer: Buffer): { width: number; height: number } {
+  return { width: buffer.readUInt32BE(16), height: buffer.readUInt32BE(20) }
+}
+
+async function exportFile(app: ElectronApplication, page: Page, item: ExportFileRequest): Promise<void> {
+  await app.evaluate(({ dialog }, filePath) => {
+    dialog.showSaveDialog = async () => ({ canceled: false, filePath })
+  }, item.file)
+  await page.getByRole('button', { name: /导出/ }).click()
+  const menuItem = page.getByRole('menuitem', { name: item.label })
+  if (item.quality) {
+    await menuItem.focus()
+    await page.keyboard.press('ArrowRight')
+    const qualityItem = page.getByRole('menuitemradio', { name: new RegExp('^' + item.quality) })
+    await expect(qualityItem).toBeVisible()
+    await qualityItem.click({ force: true })
+  } else {
+    await menuItem.click()
+  }
+  await expect.poll(async () => {
+    try {
+      return (await stat(item.file)).size
+    } catch {
+      return 0
+    }
+  }, { timeout: 20_000 }).toBeGreaterThan(100)
+}
+
 test('可启动、打开工作区、编辑节点并自动保存', async () => {
   const root = await mkdtemp(path.join(tmpdir(), 'zhitu-e2e-'))
   const userData = path.join(root, 'user-data')
+  const settingsPath = path.join(userData, 'settings.json')
   const localAppData = path.join(root, 'local-app-data')
   const appData = path.join(root, 'app-data')
   const workspace = path.join(root, '学习工作区')
@@ -35,7 +70,7 @@ test('可启动、打开工作区、编辑节点并自动保存', async () => {
     JSON.stringify([{ path: workspace, name: '端到端测试', lastOpenedAt: now }], null, 2)
   )
   await writeFile(
-    path.join(userData, 'settings.json'),
+    settingsPath,
     JSON.stringify({ theme: 'light', panels: { outline: true, inspector: true }, lastWorkspacePath: workspace }, null, 2)
   )
 
@@ -62,25 +97,47 @@ test('可启动、打开工作区、编辑节点并自动保存', async () => {
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark')
   await page.screenshot({ path: 'test-results/zhitu-workspace-dark.png' })
 
-  const exports = [
-    { format: 'png', label: 'PNG 图片', file: path.join(root, '导图.png') },
-    { format: 'svg', label: 'SVG 矢量图', file: path.join(root, '导图.svg') },
-    { format: 'pdf', label: 'PDF 文档', file: path.join(root, '导图.pdf') }
+  await page.getByRole('button', { name: /导出/ }).click()
+  await page.getByRole('menuitem', { name: 'PNG 图片' }).hover()
+  await expect(page.getByRole('menuitemradio', { name: /^高清/ })).toHaveAttribute('aria-checked', 'true')
+  await page.keyboard.press('Escape')
+  await page.keyboard.press('Escape')
+
+  const standardPngFile = path.join(root, '导图-standard.png')
+  const highPngFile = path.join(root, '导图-high.png')
+  const ultraPngFile = path.join(root, '导图-ultra.png')
+  const highPdfFile = path.join(root, '导图-high.pdf')
+  const exports: ExportFileRequest[] = [
+    { label: 'PNG 图片', quality: '标准', file: standardPngFile },
+    { label: 'PNG 图片', quality: '高清（推荐）', file: highPngFile },
+    { label: 'SVG 矢量图', quality: null, file: path.join(root, '导图.svg') },
+    { label: 'PDF 文档', quality: '高清（推荐）', file: highPdfFile },
+    { label: 'PNG 图片', quality: '超清', file: ultraPngFile }
   ]
-  for (const item of exports) {
-    await app.evaluate(({ dialog }, filePath) => {
-      dialog.showSaveDialog = async () => ({ canceled: false, filePath })
-    }, item.file)
-    await page.getByRole('button', { name: /导出/ }).click()
-    await page.getByRole('menuitem', { name: item.label }).click()
-    await expect.poll(async () => {
-      try {
-        return (await stat(item.file)).size
-      } catch {
-        return 0
-      }
-    }, { timeout: 20_000 }).toBeGreaterThan(100)
-  }
+  for (const item of exports) await exportFile(app, page, item)
+
+  const standardPng = pngDimensions(await readFile(standardPngFile))
+  const highPng = pngDimensions(await readFile(highPngFile))
+  const ultraPng = pngDimensions(await readFile(ultraPngFile))
+  expect(highPng.width).toBeGreaterThan(standardPng.width)
+  expect(ultraPng.width).toBeGreaterThan(highPng.width)
+  expect(highPng.width / standardPng.width).toBeGreaterThan(1.2)
+  expect(highPng.width / standardPng.width).toBeLessThan(1.3)
+  expect(ultraPng.width / highPng.width).toBeGreaterThan(1.15)
+  expect(ultraPng.width / highPng.width).toBeLessThan(1.25)
+
+  const pdfText = (await readFile(highPdfFile)).toString('latin1')
+  const pdfWidthMatch = pdfText.match(/\/Width\s+(\d+)/)
+  const pdfHeightMatch = pdfText.match(/\/Height\s+(\d+)/)
+  expect(pdfWidthMatch).not.toBeNull()
+  expect(pdfHeightMatch).not.toBeNull()
+  expect(Number(pdfWidthMatch![1])).toBeGreaterThanOrEqual(1000)
+  expect(Number(pdfHeightMatch![1])).toBeGreaterThanOrEqual(290)
+
+  await expect.poll(async () => {
+    const settings = JSON.parse(await readFile(settingsPath, 'utf8')) as { exportQuality?: string }
+    return settings.exportQuality
+  }).toBe('ultra')
 
   await page.waitForTimeout(1300)
   const mapFiles = (await readdir(path.join(workspace, 'maps'))).filter((file) => file.endsWith('.mindmap.json'))
@@ -89,6 +146,21 @@ test('可启动、打开工作区、编辑节点并自动保存', async () => {
   expect(Object.values(saved.nodes).some((node: any) => node.title === '快速排序')).toBe(true)
 
   await app.close()
+
+  const restartedApp = await electron.launch({
+    args: ['--no-sandbox', '--disable-gpu', '--disable-gpu-sandbox', '--disable-software-rasterizer', '.'],
+    env: { ...process.env, ZHITU_USER_DATA: userData, LOCALAPPDATA: localAppData, APPDATA: appData }
+  })
+  try {
+    const restartedPage = await restartedApp.firstWindow()
+    await restartedPage.getByRole('button').filter({ hasText: '端到端测试' }).click()
+    await expect(restartedPage.getByLabel('大纲编辑')).toBeVisible()
+    await restartedPage.getByRole('button', { name: /导出/ }).click()
+    await restartedPage.getByRole('menuitem', { name: 'PNG 图片' }).hover()
+    await expect(restartedPage.getByRole('menuitemradio', { name: /^超清/ })).toHaveAttribute('aria-checked', 'true')
+  } finally {
+    await restartedApp.close()
+  }
 })
 
 

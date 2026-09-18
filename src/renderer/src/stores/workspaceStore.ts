@@ -2,12 +2,14 @@ import { create } from 'zustand'
 import type {
   AppSettings,
   ConflictState,
+  ExportQuality,
   MapSummary,
   PanelVisibility,
   RecentWorkspace,
   ThemeMode,
   WorkspaceDescriptor
 } from '@shared/types'
+import { DEFAULT_APP_SETTINGS } from '@shared/settings'
 import { useMapStore } from './mapStore'
 
 export interface ToastMessage {
@@ -39,6 +41,7 @@ interface WorkspaceState {
   refreshMaps: () => Promise<void>
   setTheme: (theme: ThemeMode) => void
   toggleTheme: () => void
+  setExportQuality: (quality: ExportQuality) => void
   togglePanel: (panel: keyof PanelVisibility) => void
   showToast: (message: string, kind?: ToastMessage['kind']) => void
   clearToast: () => void
@@ -48,8 +51,8 @@ interface WorkspaceState {
 }
 
 const defaultSettings: AppSettings = {
-  theme: 'light',
-  panels: { outline: true, inspector: true }
+  ...DEFAULT_APP_SETTINGS,
+  panels: { ...DEFAULT_APP_SETTINGS.panels }
 }
 
 let toastSequence = 0
@@ -205,6 +208,12 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
   },
 
   toggleTheme: () => get().setTheme(get().settings.theme === 'light' ? 'dark' : 'light'),
+
+  setExportQuality: (exportQuality) => {
+    const settings = { ...get().settings, exportQuality }
+    set({ settings })
+    void window.zhitu.settings.write(settings)
+  },
 
   togglePanel: (panel) => {
     const panels = { ...get().settings.panels, [panel]: !get().settings.panels[panel] }

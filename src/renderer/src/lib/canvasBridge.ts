@@ -1,6 +1,8 @@
+import type { ExportFormat, ExportQuality } from '@shared/types'
+
 export interface CanvasCommands {
   fitView: () => void
-  exportMap: (format: 'png' | 'svg' | 'pdf') => Promise<void>
+  exportMap: (format: ExportFormat, quality: ExportQuality) => Promise<void>
 }
 
 let commands: CanvasCommands | null = null

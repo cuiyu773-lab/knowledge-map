@@ -1,6 +1,8 @@
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu'
 import {
+  Check,
   ChevronDown,
+  ChevronRight,
   CloudOff,
   Download,
   FilePlus2,
@@ -19,6 +21,7 @@ import {
   Trash2,
   Undo2
 } from 'lucide-react'
+import type { ExportFormat, ExportQuality } from '@shared/types'
 import { getCanvasCommands } from '@renderer/lib/canvasBridge'
 import { useAiStore } from '@renderer/stores/aiStore'
 import { useMapStore } from '@renderer/stores/mapStore'
@@ -31,6 +34,47 @@ function saveLabel(saving: boolean, dirty: boolean, error: string | null): strin
   return '已保存'
 }
 
+const EXPORT_QUALITIES: Array<{ value: ExportQuality; label: string }> = [
+  { value: 'standard', label: '标准' },
+  { value: 'high', label: '高清（推荐）' },
+  { value: 'ultra', label: '超清' }
+]
+
+const EXPORT_DETAILS: Record<ExportFormat, Record<ExportQuality, string>> = {
+  png: { standard: '2×', high: '2.5×', ultra: '3×' },
+  pdf: { standard: '1.5×', high: '1.75×', ultra: '2×' },
+  svg: { standard: '', high: '', ultra: '' }
+}
+
+function ExportQualityItems({
+  format,
+  currentQuality,
+  onSelect
+}: {
+  format: 'png' | 'pdf'
+  currentQuality: ExportQuality
+  onSelect: (format: 'png' | 'pdf', quality: ExportQuality) => void
+}) {
+  return (
+    <DropdownMenu.RadioGroup value={currentQuality}>
+      {EXPORT_QUALITIES.map((quality) => (
+        <DropdownMenu.RadioItem
+          key={quality.value}
+          className="menu-item"
+          value={quality.value}
+          onSelect={() => onSelect(format, quality.value)}
+        >
+          <span className="menu-item__indicator" aria-hidden="true">
+            <DropdownMenu.ItemIndicator><Check size={14} /></DropdownMenu.ItemIndicator>
+          </span>
+          <span>{quality.label}</span>
+          <small>{EXPORT_DETAILS[format][quality.value]}</small>
+        </DropdownMenu.RadioItem>
+      ))}
+    </DropdownMenu.RadioGroup>
+  )
+}
+
 export function CommandBar() {
   const descriptor = useWorkspaceStore((state) => state.descriptor)
   const activeMapId = useWorkspaceStore((state) => state.activeMapId)
@@ -41,6 +85,7 @@ export function CommandBar() {
   const deleteMap = useWorkspaceStore((state) => state.deleteMap)
   const closeWorkspace = useWorkspaceStore((state) => state.closeWorkspace)
   const toggleTheme = useWorkspaceStore((state) => state.toggleTheme)
+  const setExportQuality = useWorkspaceStore((state) => state.setExportQuality)
   const togglePanel = useWorkspaceStore((state) => state.togglePanel)
   const setSearchOpen = useWorkspaceStore((state) => state.setSearchOpen)
   const setSnapshotsOpen = useWorkspaceStore((state) => state.setSnapshotsOpen)
@@ -57,9 +102,14 @@ export function CommandBar() {
   const setAiConfigOpen = useAiStore((state) => state.setConfigOpen)
   const setMaterialsOpen = useAiStore((state) => state.setMaterialsOpen)
 
-  const exportMap = async (format: 'png' | 'svg' | 'pdf') => {
+  const exportMap = async (format: ExportFormat, quality: ExportQuality) => {
     await useMapStore.getState().save()
-    await getCanvasCommands()?.exportMap(format)
+    await getCanvasCommands()?.exportMap(format, quality)
+  }
+
+  const selectExportQuality = (format: 'png' | 'pdf', quality: ExportQuality) => {
+    setExportQuality(quality)
+    void exportMap(format, quality)
   }
 
   const newMap = async () => {
@@ -147,9 +197,23 @@ export function CommandBar() {
           </DropdownMenu.Trigger>
           <DropdownMenu.Portal>
             <DropdownMenu.Content className="menu-content" sideOffset={7} align="end">
-              <DropdownMenu.Item className="menu-item" onSelect={() => void exportMap('png')}>PNG 图片</DropdownMenu.Item>
-              <DropdownMenu.Item className="menu-item" onSelect={() => void exportMap('svg')}>SVG 矢量图</DropdownMenu.Item>
-              <DropdownMenu.Item className="menu-item" onSelect={() => void exportMap('pdf')}>PDF 文档</DropdownMenu.Item>
+              <DropdownMenu.Sub>
+                <DropdownMenu.SubTrigger className="menu-item">PNG 图片<ChevronRight className="menu-item__submenu-icon" size={14} /></DropdownMenu.SubTrigger>
+                <DropdownMenu.Portal>
+                  <DropdownMenu.SubContent className="menu-content" sideOffset={5} alignOffset={-6}>
+                    <ExportQualityItems format="png" currentQuality={settings.exportQuality} onSelect={selectExportQuality} />
+                  </DropdownMenu.SubContent>
+                </DropdownMenu.Portal>
+              </DropdownMenu.Sub>
+              <DropdownMenu.Item className="menu-item" onSelect={() => void exportMap('svg', settings.exportQuality)}>SVG 矢量图</DropdownMenu.Item>
+              <DropdownMenu.Sub>
+                <DropdownMenu.SubTrigger className="menu-item">PDF 文档<ChevronRight className="menu-item__submenu-icon" size={14} /></DropdownMenu.SubTrigger>
+                <DropdownMenu.Portal>
+                  <DropdownMenu.SubContent className="menu-content" sideOffset={5} alignOffset={-6}>
+                    <ExportQualityItems format="pdf" currentQuality={settings.exportQuality} onSelect={selectExportQuality} />
+                  </DropdownMenu.SubContent>
+                </DropdownMenu.Portal>
+              </DropdownMenu.Sub>
             </DropdownMenu.Content>
           </DropdownMenu.Portal>
         </DropdownMenu.Root>
