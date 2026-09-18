@@ -10,7 +10,7 @@
 - 提供纸本浅色主题与暖黑深色主题。
 - 工作区由普通目录组成，可整体复制、备份或迁移。
 - 编辑停止 800ms 后原子保存；每 5 分钟以及删除前生成恢复快照。
-- 支持从 Markdown 导入标题、列表和本地图片，导出 PNG、SVG、PDF。
+- 支持从 Markdown 导入标题、列表和本地图片，导出 PNG、SVG、PDF；PNG/PDF 可选择标准、高清、超清三档画质。
 - 支持工作区内全文搜索、最近工作区、外部文件冲突检测和系统回收站删除。
 - 支持 OpenAI 兼容的 AI 制作：对话追问后生成大纲、编辑预览，并创建新导图或追加、替换、合并到现有节点。
 - 工作区资料库支持 PDF、DOCX、PPTX、Markdown 和 TXT；可通过复选框多选资料，单次最多选择 10 份，选中的内容会按需解析并发送给用户配置的模型服务。
@@ -46,10 +46,12 @@ npm run build:metafile-renderer
 npm run package:win
 ```
 
+当前开发、验证和发布状态见 [PROJECT_STATUS.md](PROJECT_STATUS.md)。
+
 `npm run package:win` 会生成：
 
-- `release\知图 Setup 0.3.0.exe`：Windows x64 安装程序。
-- `release\知图 0.3.0.exe`：免安装便携版。
+- `release\知图 Setup 0.4.0.exe`：Windows x64 安装程序。
+- `release\知图 0.4.0.exe`：免安装便携版。
 - `release\win-unpacked`：解包后的应用目录。
 
 如果 Electron 或 electron-builder 在受限网络下无法下载二进制，可使用国内镜像：
