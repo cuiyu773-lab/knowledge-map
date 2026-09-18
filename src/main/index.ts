@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, net, protocol, shell } from 'electron'
+import { app, BrowserWindow, ipcMain, Menu, net, protocol, shell } from 'electron'
 import type { IpcMainInvokeEvent } from 'electron'
 import { dirname, join } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
@@ -11,6 +11,8 @@ import type {
   AppSettings,
   ExportRequest,
   MindMapDocument,
+  ThemeMode,
+  WindowCommand,
   WorkspaceDescriptor
 } from '@shared/types'
 import { AiService } from './ai'
@@ -62,6 +64,96 @@ function handleWithEvent<T>(
   })
 }
 
+const TITLE_BAR_HEIGHT = 38
+const TITLE_BAR_THEMES: Record<ThemeMode, { color: string; symbolColor: string }> = {
+  light: { color: '#e8ddc7', symbolColor: '#293027' },
+  dark: { color: '#24281f', symbolColor: '#eee5d4' }
+}
+const WINDOW_COMMANDS = new Set<WindowCommand>([
+  'minimize',
+  'toggle-maximize',
+  'close',
+  'reload',
+  'toggle-full-screen',
+  'zoom-in',
+  'zoom-out',
+  'reset-zoom',
+  'toggle-devtools',
+  'edit-undo',
+  'edit-redo',
+  'cut',
+  'copy',
+  'paste',
+  'select-all'
+])
+
+function isWindowCommand(value: unknown): value is WindowCommand {
+  return typeof value === 'string' && WINDOW_COMMANDS.has(value as WindowCommand)
+}
+
+function getEventWindow(event: IpcMainInvokeEvent): BrowserWindow {
+  const window = BrowserWindow.fromWebContents(event.sender)
+  if (!window) throw new AppError('WINDOW_NOT_FOUND', '窗口已经关闭')
+  return window
+}
+
+function applyTitleBarTheme(window: BrowserWindow, theme: ThemeMode): void {
+  const colors = TITLE_BAR_THEMES[theme]
+  window.setTitleBarOverlay({ ...colors, height: TITLE_BAR_HEIGHT })
+}
+
+function executeWindowCommand(window: BrowserWindow, command: WindowCommand): void {
+  const { webContents } = window
+  switch (command) {
+    case 'minimize':
+      window.minimize()
+      break
+    case 'toggle-maximize':
+      if (window.isMaximized()) window.unmaximize()
+      else window.maximize()
+      break
+    case 'close':
+      window.close()
+      break
+    case 'reload':
+      webContents.reload()
+      break
+    case 'toggle-full-screen':
+      window.setFullScreen(!window.isFullScreen())
+      break
+    case 'zoom-in':
+      webContents.setZoomLevel(Math.min(5, webContents.getZoomLevel() + 0.5))
+      break
+    case 'zoom-out':
+      webContents.setZoomLevel(Math.max(-5, webContents.getZoomLevel() - 0.5))
+      break
+    case 'reset-zoom':
+      webContents.setZoomLevel(0)
+      break
+    case 'toggle-devtools':
+      if (webContents.isDevToolsOpened()) webContents.closeDevTools()
+      else webContents.openDevTools({ mode: 'detach' })
+      break
+    case 'edit-undo':
+      webContents.undo()
+      break
+    case 'edit-redo':
+      webContents.redo()
+      break
+    case 'cut':
+      webContents.cut()
+      break
+    case 'copy':
+      webContents.copy()
+      break
+    case 'paste':
+      webContents.paste()
+      break
+    case 'select-all':
+      webContents.selectAll()
+      break
+  }
+}
 function registerIpc(): void {
   handle(IPC.recentWorkspaces, () => service.getRecentWorkspaces())
   ipcMain.handle(IPC.createWorkspace, (_event, name: string) => service.createWorkspace(name))
@@ -104,6 +196,14 @@ function registerIpc(): void {
   handle(IPC.materialsImportDialog, () => aiService.importMaterialDialog())
   handle(IPC.materialsDelete, (id: string) => aiService.deleteMaterial(id))
   handle(IPC.materialsReveal, (id: string) => aiService.revealMaterial(id))
+  handleWithEvent(IPC.windowCommand, (event, command: unknown) => {
+    if (!isWindowCommand(command)) throw new AppError('INVALID_WINDOW_COMMAND', '不支持的窗口命令')
+    executeWindowCommand(getEventWindow(event), command)
+  })
+  handleWithEvent(IPC.setTitleBarTheme, (event, theme: unknown) => {
+    if (theme !== 'light' && theme !== 'dark') throw new AppError('INVALID_THEME', '不支持的主题模式')
+    applyTitleBarTheme(getEventWindow(event), theme)
+  })
 }
 
 function createWindow(): void {
@@ -119,6 +219,8 @@ function createWindow(): void {
     backgroundColor: '#e8dcc7',
     title: '知图',
     icon: windowIcon,
+    titleBarStyle: 'hidden',
+    titleBarOverlay: { ...TITLE_BAR_THEMES.light, height: TITLE_BAR_HEIGHT },
     webPreferences: {
       preload: join(currentDirectory, '../preload/index.cjs'),
       contextIsolation: true,
@@ -126,6 +228,7 @@ function createWindow(): void {
       sandbox: true
     }
   })
+  mainWindow.setMenuBarVisibility(false)
 
   mainWindow.once('ready-to-show', () => mainWindow?.show())
   mainWindow.on('focus', () => mainWindow?.webContents.send(IPC.appFocus))
@@ -140,6 +243,7 @@ function createWindow(): void {
 
 app.whenReady().then(() => {
   app.setAppUserModelId('com.zhitu.studymap')
+  Menu.setApplicationMenu(null)
   protocol.handle('zhitu-asset', async (request) => {
     try {
       const url = new URL(request.url)
@@ -161,6 +265,3 @@ app.whenReady().then(() => {
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit()
 })
-
-
-

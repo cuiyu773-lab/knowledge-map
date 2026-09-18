@@ -2,6 +2,7 @@ import { useEffect } from 'react'
 import { LoaderCircle } from 'lucide-react'
 import { useAiStore } from '@renderer/stores/aiStore'
 import { useWorkspaceStore } from '@renderer/stores/workspaceStore'
+import { AppMenuBar } from './components/AppMenuBar'
 import { ConflictDialog } from './components/ConflictDialog'
 import { SearchOverlay } from './components/SearchOverlay'
 import { SnapshotDialog } from './components/SnapshotDialog'
@@ -25,13 +26,16 @@ export function App() {
 
   useEffect(() => window.zhitu.ai.onProgress((progress) => useAiStore.getState().receiveProgress(progress)), [])
 
-  if (initializing) {
-    return <div className="app-loading"><LoaderCircle className="spin" size={28} /><span>正在打开知图…</span></div>
-  }
-
   return (
     <>
-      {descriptor ? <WorkspaceShell /> : <StartupScreen />}
+      <div className="app-frame">
+        <AppMenuBar />
+        <div className="app-content">
+          {initializing
+            ? <div className="app-loading"><LoaderCircle className="spin" size={28} /><span>正在打开知图…</span></div>
+            : descriptor ? <WorkspaceShell /> : <StartupScreen />}
+        </div>
+      </div>
       <ConflictDialog />
       <SnapshotDialog />
       <SearchOverlay />

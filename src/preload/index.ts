@@ -18,6 +18,8 @@ import type {
   MindMapDocument,
   RecentWorkspace,
   SnapshotSummary,
+  ThemeMode,
+  WindowCommand,
   WorkspaceDescriptor
 } from '@shared/types'
 
@@ -82,6 +84,10 @@ const api = {
       return () => { ipcRenderer.removeListener(IPC.aiProgress, listener) }
     }
   },
+  shell: {
+    command: (command: WindowCommand) => invoke<void>(IPC.windowCommand, command),
+    setTitleBarTheme: (theme: ThemeMode) => invoke<void>(IPC.setTitleBarTheme, theme)
+  },
   materials: {
     list: () => invoke<MaterialSummary[]>(IPC.materialsList),
     importDialog: () => invoke<MaterialSummary | null>(IPC.materialsImportDialog),
@@ -98,5 +104,3 @@ const api = {
 contextBridge.exposeInMainWorld('zhitu', api)
 
 export type ZhituApi = typeof api
-
-

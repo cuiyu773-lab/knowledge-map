@@ -97,6 +97,53 @@ body {
   background: var(--surface);
   text-rendering: optimizeLegibility;
 }
+.app-frame { height: 100%; min-width: 0; min-height: 0; display: grid; grid-template-rows: 38px minmax(0, 1fr); background: var(--surface); }
+.app-content { min-width: 0; min-height: 0; overflow: hidden; }
+.app-titlebar {
+  position: relative;
+  z-index: 110;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  padding: 0 144px 0 10px;
+  border-bottom: 1px solid var(--line-soft);
+  background:
+    linear-gradient(90deg, color-mix(in srgb, var(--surface-panel) 96%, var(--surface-raised)), var(--surface-panel));
+  box-shadow: inset 0 -1px color-mix(in srgb, var(--surface-raised) 52%, transparent);
+  user-select: none;
+  -webkit-app-region: drag;
+}
+.app-titlebar__menus { height: 100%; display: flex; align-items: center; gap: 2px; -webkit-app-region: no-drag; }
+.app-titlebar__drag { min-width: 18px; height: 100%; flex: 1; }
+.app-menu-trigger {
+  height: 28px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 8px;
+  color: var(--ink-soft);
+  background: transparent;
+  font-size: 12px;
+  font-weight: 650;
+  letter-spacing: 0.02em;
+  transition: color 140ms ease, background 140ms ease, box-shadow 140ms ease;
+}
+.app-menu-trigger:hover, .app-menu-trigger[data-state="open"] {
+  color: var(--ink);
+  background: color-mix(in srgb, var(--surface-strong) 68%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--line) 32%, transparent);
+}
+.app-menu-content { min-width: 250px; }
+.menu-shortcut {
+  margin-left: auto;
+  padding-left: 24px;
+  color: var(--ink-faint);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: -0.02em;
+  white-space: nowrap;
+}
+.menu-item[data-disabled] { color: var(--ink-faint); opacity: 0.48; cursor: default; }
+.menu-item[data-disabled] .menu-shortcut { color: inherit; }
 body::before {
   content: "";
   position: fixed;

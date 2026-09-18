@@ -80,7 +80,15 @@ test('可启动、打开工作区、编辑节点并自动保存', async () => {
   })
   const page = await app.firstWindow()
   await expect(page.getByText('把知识画成', { exact: false })).toBeVisible()
-
+  await expect(page.locator('.app-titlebar')).toBeVisible()
+  await expect(page.getByRole('navigation', { name: '应用菜单' })).toBeVisible()
+  expect(await app.evaluate(({ BrowserWindow }) =>
+    BrowserWindow.getAllWindows().every((window) => !window.isMenuBarVisible())
+  )).toBe(true)
+  await page.getByRole('button', { name: '文件' }).click()
+  await expect(page.getByRole('menuitem', { name: /新建导图/ })).toHaveAttribute('aria-disabled', 'true')
+  await expect(page.getByText('Ctrl+N')).toBeVisible()
+  await page.keyboard.press('Escape')
   await page.getByRole('button').filter({ hasText: '端到端测试' }).click()
   await expect(page.getByText('端到端测试')).toBeVisible()
   await expect(page.getByLabel('大纲编辑')).toBeVisible()
@@ -93,7 +101,16 @@ test('可启动、打开工作区、编辑节点并自动保存', async () => {
   await expect(page.getByLabel('大纲编辑').getByText('快速排序', { exact: true })).toBeVisible()
 
   await page.screenshot({ path: 'test-results/zhitu-workspace.png' })
-  await page.getByTitle('切换到深色').click()
+  await page.getByRole('button', { name: '文件' }).click()
+  await expect(page.getByRole('menuitem', { name: /保存/ })).not.toHaveAttribute('aria-disabled', 'true')
+  await page.getByRole('menuitem', { name: /导出/ }).hover()
+  await page.getByRole('menuitem', { name: 'PNG 图片' }).hover()
+  await expect(page.getByRole('menuitemradio', { name: /^高清/ })).toBeVisible()
+  await page.keyboard.press('Escape')
+  await page.keyboard.press('Escape')
+  await page.getByRole('button', { name: '视图' }).click()
+  await expect(page.getByRole('menuitemcheckbox', { name: '大纲面板' })).toHaveAttribute('aria-checked', 'true')
+  await page.getByRole('menuitemradio', { name: '深色主题' }).click()
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark')
   await page.screenshot({ path: 'test-results/zhitu-workspace-dark.png' })
 
@@ -162,9 +179,3 @@ test('可启动、打开工作区、编辑节点并自动保存', async () => {
     await restartedApp.close()
   }
 })
-
-
-
-
-
-

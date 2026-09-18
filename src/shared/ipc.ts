@@ -35,6 +35,7 @@ export const IPC = {
   materialsImportDialog: 'materials:import-dialog',
   materialsDelete: 'materials:delete',
   materialsReveal: 'materials:reveal',
+  windowCommand: 'window:command',
+  setTitleBarTheme: 'window:titlebar-theme',
   appFocus: 'app:focus'
 } as const
-
