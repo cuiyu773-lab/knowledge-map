@@ -48,8 +48,8 @@ npm run package:win
 
 `npm run package:win` 会生成：
 
-- `release\知图 Setup 0.2.1.exe`：Windows x64 安装程序。
-- `release\知图 0.2.1.exe`：免安装便携版。
+- `release\知图 Setup 0.3.0.exe`：Windows x64 安装程序。
+- `release\知图 0.3.0.exe`：免安装便携版。
 - `release\win-unpacked`：解包后的应用目录。
 
 如果 Electron 或 electron-builder 在受限网络下无法下载二进制，可使用国内镜像：

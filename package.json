@@ -1,6 +1,6 @@
 {
   "name": "zhitu-study-map",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "description": "知图 - 本地优先的桌面学习思维导图工具",
   "main": "out/main/index.js",
   "type": "module",
