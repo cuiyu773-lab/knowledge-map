@@ -102,7 +102,7 @@ test('可启动、打开工作区、编辑节点并自动保存', async () => {
 
   await page.screenshot({ path: 'test-results/zhitu-workspace.png' })
   await page.getByRole('button', { name: '文件' }).click()
-  await expect(page.getByRole('menuitem', { name: /保存/ })).not.toHaveAttribute('aria-disabled', 'true')
+  await expect(page.getByRole('menuitem', { name: '保存 Ctrl+S' })).not.toHaveAttribute('aria-disabled', 'true')
   await page.getByRole('menuitem', { name: /导出/ }).hover()
   await page.getByRole('menuitem', { name: 'PNG 图片' }).hover()
   await expect(page.getByRole('menuitemradio', { name: /^高清/ })).toBeVisible()

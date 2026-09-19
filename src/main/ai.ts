@@ -3,6 +3,7 @@ import { createHash } from 'node:crypto'
 import { promises as fs } from 'node:fs'
 import path from 'node:path'
 import { MAX_AI_MATERIALS, parseAiPreview, parseAiQuestions, parseModelJson } from '@shared/ai'
+import { templateSkeletonForAi } from '@shared/templates'
 import type {
   AiConfigInput,
   AiConsultRequest,
@@ -28,6 +29,7 @@ import {
   type VisionCaptionMap
 } from './vision'
 import { AppError } from './errors'
+import type { TemplateService } from './templates'
 import type { WorkspaceService } from './workspace'
 
 const CHUNK_CHARS = 12_000
@@ -124,7 +126,10 @@ export class AiService {
   private memoryApiKey: string | null = null
   private readonly jobs = new Map<string, AbortController>()
 
-  constructor(private readonly workspace: WorkspaceService) {}
+  constructor(
+    private readonly workspace: WorkspaceService,
+    private readonly templates: TemplateService
+  ) {}
 
   async getConfig(): Promise<AiPublicConfig> {
     const config = await this.readConfig()
@@ -285,12 +290,19 @@ export class AiService {
       )
       const history = this.historyText(request.session)
       const answers = request.answers.map((item) => `${item.id}: ${item.answer}`).join('\n')
+      const candidates = request.session.mode === 'new'
+        ? (await this.templates.listAiRecommendationTemplates()).slice(0, 40)
+        : []
+      const candidateMap = new Map(candidates.map((item) => [item.id, item]))
+      const templateCatalog = candidates.map((item) =>
+        `${item.id}｜${item.name}｜${item.description || '无说明'}｜一级主题：${item.topLevelTitles.join('、') || '无'}`
+      ).join('\n')
       onProgress({ progressId: request.progressId, stage: 'thinking', message: '正在分析需求与资料…' })
       const messages: ChatMessage[] = [
         {
           role: 'system',
           content:
-            '你是中文思维导图规划助手。先判断信息是否足够。若仍需关键澄清，最多提出 3 个问题，每个问题可提供 2-6 个简洁选项；若信息已足够，则 ready=true。只输出 JSON，不要输出 Markdown。JSON 格式：{"ready":boolean,"assistantText":"简述","questions":[{"id":"q1","question":"问题","options":["选项"]}]}。'
+            '你是中文思维导图规划助手。先判断信息是否足够。若仍需关键澄清，最多提出 3 个问题，每个问题可提供 2-6 个简洁选项；若信息已足够，则 ready=true。若存在候选模板，可从候选列表中选出最多 3 个最匹配的模板 ID。只能使用候选列表中的 ID，不得编造。只输出 JSON，不要输出 Markdown。JSON 格式：{"ready":boolean,"assistantText":"简述","questions":[{"id":"q1","question":"问题","options":["选项"]}],"templateIds":["id"]}。'
         },
         {
           role: 'user',
@@ -300,7 +312,8 @@ export class AiService {
             answers ? `本轮回答：\n${answers}` : '',
             history ? `此前对话：\n${history}` : '',
             request.mapContext ? `当前导图上下文：\n${request.mapContext}` : '',
-            materialContext ? `课程资料摘要：\n${materialContext}` : ''
+            materialContext ? `课程资料摘要：\n${materialContext}` : '',
+            templateCatalog ? `候选模板（仅用于推荐，不包含模板详注或图片）：\n${templateCatalog}` : ''
           ]
             .filter(Boolean)
             .join('\n\n')
@@ -310,11 +323,20 @@ export class AiService {
       const record = raw && typeof raw === 'object' ? (raw as Record<string, unknown>) : {}
       const questions = parseAiQuestions(record)
       const ready = record.ready === true || questions.length === 0
+      const templateRecommendations = Array.isArray(record.templateIds)
+        ? record.templateIds
+            .filter((id): id is string => typeof id === 'string')
+            .map((id) => candidateMap.get(id))
+            .filter((item): item is NonNullable<typeof item> => Boolean(item))
+            .filter((item, index, values) => values.findIndex((candidate) => candidate.id === item.id) === index)
+            .slice(0, 3)
+        : []
       return {
         kind: ready ? 'ready' : 'questions',
         questions: ready ? [] : questions,
         round: request.session.clarificationRound + 1,
-        assistantText: cleanMessage(record.assistantText, 500) || (ready ? '信息已足够，可以生成大纲。' : '还需要确认几个方向。')
+        assistantText: cleanMessage(record.assistantText, 500) || (ready ? '信息已足够，可以生成大纲。' : '还需要确认几个方向。'),
+        ...(templateRecommendations.length ? { templateRecommendations } : {})
       }
     } finally {
       this.jobs.delete(request.progressId)
@@ -326,6 +348,14 @@ export class AiService {
     this.assertConsent(config)
     const signal = this.startJob(request.progressId)
     try {
+      const templateId = request.session.mode === 'new'
+        ? request.templateId ?? request.session.selectedTemplateId
+        : undefined
+      const expectedRevision = request.templateRevision ?? request.session.selectedTemplateRevision
+      const template = templateId ? await this.templates.getTemplateModel(templateId) : undefined
+      if (template && expectedRevision && template.revision !== expectedRevision) {
+        throw new AppError('TEMPLATE_CHANGED', '模板已更新，请重新确认模板后再生成')
+      }
       const materialContext = await this.prepareMaterialContext(
         request.session.materialIds,
         signal,
@@ -341,8 +371,9 @@ export class AiService {
       const messages: ChatMessage[] = [
         {
           role: 'system',
-          content:
-            '你是课程思维导图设计师。请根据用户要求、当前结构和资料摘要生成准确、无重复、层级清晰的中文主题树。所有节点都要有 15-80 字的摘要，不生成 Markdown 详注。只输出 JSON，不要输出代码块或解释。JSON 格式：{"title":"根主题或分支主题","summary":"根主题摘要","children":[{"title":"主题","summary":"摘要","children":[]}]}。'
+          content: template
+            ? '你是课程思维导图设计师。请严格按给定模板骨架填充内容。模板节点格式为 [稳定键] (行为) 标题。fixed 节点必须保留原标题、摘要和详注，expandable 节点保留标题并可补充空摘要、详注和新增子节点，optional 节点可省略。已有摘要或详注不得覆盖。所有新增节点都要有 15-80 字摘要和不超过 1200 字的 Markdown 详注。只输出 JSON，不要输出代码块或解释。JSON 格式：{"title":"根主题","summary":"根摘要","children":[{"templateKey":"模板键，新增节点省略","title":"标题","summary":"摘要","detailMarkdown":"Markdown 详注","included":true,"children":[]}]}。'
+            : '你是课程思维导图设计师。请根据用户要求、当前结构和资料摘要生成准确、无重复、层级清晰的中文主题树。所有节点都要有 15-80 字的摘要，不生成 Markdown 详注。只输出 JSON，不要输出代码块或解释。JSON 格式：{"title":"根主题或分支主题","summary":"根主题摘要","children":[{"title":"主题","summary":"摘要","children":[]}]}。'
         },
         {
           role: 'user',
@@ -352,6 +383,7 @@ export class AiService {
             `要求：\n${this.historyText(request.session)}`,
             request.mapContext ? `当前导图上下文：\n${request.mapContext}` : '',
             materialContext ? `课程资料摘要：\n${materialContext}` : '',
+            template ? `模板骨架（必须遵守）：\n${templateSkeletonForAi(template)}` : '',
             request.session.mode === 'new'
               ? '请返回完整根主题和主要分支。'
               : '请只返回应挂到当前选中节点下的新增分支；title 可沿用当前节点名称。'
@@ -361,7 +393,7 @@ export class AiService {
         }
       ]
       const raw = await this.callJson(messages, apiKey, config, signal)
-      return parseAiPreview(raw, request.session.targetNodeId ?? undefined)
+      return parseAiPreview(raw, request.session.targetNodeId ?? undefined, template)
     } finally {
       this.jobs.delete(request.progressId)
     }

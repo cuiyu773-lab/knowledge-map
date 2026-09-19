@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState } from 'react'
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu'
-import { Check, ChevronRight } from 'lucide-react'
+import { BookTemplate, Check, ChevronRight, LibraryBig } from 'lucide-react'
 import type { ExportFormat, ExportQuality, ThemeMode, WindowCommand } from '@shared/types'
 import { getCanvasCommands } from '@renderer/lib/canvasBridge'
 import { useAiStore } from '@renderer/stores/aiStore'
 import { useMapStore } from '@renderer/stores/mapStore'
 import { useWorkspaceStore } from '@renderer/stores/workspaceStore'
+import { useTemplateStore } from '@renderer/stores/templateStore'
 
 const EXPORT_QUALITIES: Array<{ value: ExportQuality; label: string }> = [
   { value: 'standard', label: '标准' },
@@ -70,6 +71,10 @@ export function AppMenuBar() {
   const chooseWorkspace = useWorkspaceStore((state) => state.chooseWorkspace)
   const closeWorkspace = useWorkspaceStore((state) => state.closeWorkspace)
   const createMap = useWorkspaceStore((state) => state.createMap)
+  const createMapFromTemplate = useTemplateStore((state) => state.createMapFromTemplate)
+  const openTemplatePicker = useTemplateStore((state) => state.openPicker)
+  const setTemplateSaveOpen = useTemplateStore((state) => state.setSaveOpen)
+  const setTemplateManagerOpen = useTemplateStore((state) => state.setManagerOpen)
   const importMarkdown = useWorkspaceStore((state) => state.importMarkdown)
   const setExportQuality = useWorkspaceStore((state) => state.setExportQuality)
   const setSearchOpen = useWorkspaceStore((state) => state.setSearchOpen)
@@ -108,8 +113,10 @@ export function AppMenuBar() {
   }
 
   const newMap = async () => {
-    const title = window.prompt('新导图名称', '新导图')
-    if (title?.trim()) await createMap(title.trim())
+    const picked = await openTemplatePicker('map')
+    if (picked === null) return
+    if (picked === 'blank') await createMap('新导图')
+    else await createMapFromTemplate(picked.id, picked.name)
   }
 
   const openWorkspace = async () => {
@@ -213,6 +220,9 @@ export function AppMenuBar() {
               <DropdownMenu.Item className="menu-item" disabled={!descriptor || busy || aiGenerating} onSelect={() => void newMap()}>
                 <span>新建导图</span><MenuShortcut>Ctrl+N</MenuShortcut>
               </DropdownMenu.Item>
+              <DropdownMenu.Item className="menu-item" disabled={!descriptor || busy} onSelect={() => setTemplateManagerOpen(true)}>
+                <span><LibraryBig size={15} />模板与预设…</span>
+              </DropdownMenu.Item>
               <DropdownMenu.Item className="menu-item" disabled={busy} onSelect={() => void openWorkspace()}>
                 <span>打开工作区…</span><MenuShortcut>Ctrl+O</MenuShortcut>
               </DropdownMenu.Item>
@@ -222,6 +232,12 @@ export function AppMenuBar() {
               <DropdownMenu.Separator className="menu-separator" />
               <DropdownMenu.Item className="menu-item" disabled={!mapDocument || readOnly || saving || !dirty} onSelect={() => void saveMap()}>
                 <span>保存</span><MenuShortcut>Ctrl+S</MenuShortcut>
+              </DropdownMenu.Item>
+              <DropdownMenu.Item className="menu-item" disabled={!mapDocument || readOnly} onSelect={() => mapDocument && setTemplateSaveOpen(true, mapDocument.rootId)}>
+                <span><BookTemplate size={15} />保存整张导图为模板…</span>
+              </DropdownMenu.Item>
+              <DropdownMenu.Item className="menu-item" disabled={!mapDocument || readOnly || !selectedNodeId || selectedNodeId === mapDocument.rootId} onSelect={() => selectedNodeId && setTemplateSaveOpen(true, selectedNodeId)}>
+                <span><BookTemplate size={15} />将当前主题保存为模板…</span>
               </DropdownMenu.Item>
               <DropdownMenu.Item className="menu-item" disabled={!descriptor || busy} onSelect={() => void importMarkdown()}>
                 <span>导入 Markdown…</span>

@@ -30,12 +30,14 @@ interface WorkspaceState {
   searchOpen: boolean
   snapshotsOpen: boolean
   initialize: () => Promise<void>
-  createWorkspace: (name: string) => Promise<boolean>
+  createWorkspace: (name: string, templateId?: string) => Promise<boolean>
   chooseWorkspace: () => Promise<boolean>
   openWorkspace: (workspacePath: string) => Promise<boolean>
   closeWorkspace: () => Promise<void>
   selectMap: (mapId: string) => Promise<void>
   createMap: (title?: string) => Promise<MapSummary | null>
+  createMapFromTemplate: (templateId: string, title?: string) => Promise<MapSummary | null>
+  adoptCreatedMap: (summary: MapSummary, document: import('@shared/types').MindMapDocument) => Promise<void>
   importMarkdown: () => Promise<void>
   deleteMap: (mapId: string) => Promise<void>
   refreshMaps: () => Promise<void>
@@ -82,7 +84,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
     })
   },
 
-  createWorkspace: async (name) => {
+  createWorkspace: async (name, templateId) => {
     set({ busy: true })
     const result = await window.zhitu.workspace.create(name)
     set({ busy: false })
@@ -92,6 +94,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
     }
     set({ descriptor: result.value, activeMapId: result.value.maps[0]?.id ?? null })
     if (result.value.maps[0]) await useMapStore.getState().loadMap(result.value.maps[0].id)
+    else if (templateId) await get().createMapFromTemplate(templateId, result.value.meta.name)
     else await get().createMap('我的学习导图')
     await get().initialize()
     return true
@@ -154,6 +157,32 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
     }))
     await useMapStore.getState().loadDocument(result.value.document, '', false)
     return result.value.summary
+  },
+
+  createMapFromTemplate: async (templateId, title) => {
+    set({ busy: true })
+    const result = await window.zhitu.templates.instantiate(templateId, title)
+    set({ busy: false })
+    if (!result.ok) {
+      get().showToast(result.error.message, 'error')
+      return null
+    }
+    set((state) => ({
+      activeMapId: result.value.summary.id,
+      descriptor: state.descriptor
+        ? { ...state.descriptor, maps: [...state.descriptor.maps, result.value.summary] }
+        : null
+    }))
+    await useMapStore.getState().loadDocument(result.value.document, '', false)
+    return result.value.summary
+  },
+
+  adoptCreatedMap: async (summary, document) => {
+    set((state) => ({
+      activeMapId: summary.id,
+      descriptor: state.descriptor ? { ...state.descriptor, maps: [...state.descriptor.maps, summary] } : null
+    }))
+    await useMapStore.getState().loadDocument(document, '', false)
   },
 
   importMarkdown: async () => {

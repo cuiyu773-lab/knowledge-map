@@ -63,10 +63,11 @@ describe('AI 大纲处理', () => {
         id: 'p1',
         title: '排序',
         summary: '排序算法总结',
+        detailMarkdown: '',
         included: true,
-        children: [{ id: 'p2', title: '快速排序', summary: '分治', included: true, children: [] }]
+        children: [{ id: 'p2', title: '快速排序', summary: '分治', detailMarkdown: '', included: true, children: [] }]
       },
-      { id: 'p3', title: '查找', summary: '查找算法', included: true, children: [] }
+      { id: 'p3', title: '查找', summary: '查找算法', detailMarkdown: '', included: true, children: [] }
     ])
 
     const appended = applyAiPreview(base, 'root', generated, 'append')
@@ -85,7 +86,7 @@ describe('AI 大纲处理', () => {
   it('可用 AI 根主题创建新导图并收集局部上下文', () => {
     const base = createMindMapDocument('m1', 'root', '旧标题')
     base.nodes.child = createNode('child', 'root', 0, '子主题')
-    const generated = preview([{ id: 'p1', title: '第一部分', summary: '摘要', included: true, children: [] }])
+    const generated = preview([{ id: 'p1', title: '第一部分', summary: '摘要', detailMarkdown: '', included: true, children: [] }])
     const next = createRootFromAiPreview(base, generated)
     expect(next.title).toBe('数据结构')
     expect(next.nodes.root?.summary).toBe('课程导图')

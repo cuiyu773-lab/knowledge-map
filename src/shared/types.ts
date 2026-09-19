@@ -20,6 +20,11 @@ export type WindowCommand =
   | 'select-all'
 export type ExportQuality = 'standard' | 'high' | 'ultra'
 export const DEFAULT_EXPORT_QUALITY: ExportQuality = 'high'
+export type TemplateKind = 'map' | 'subtree'
+export type TemplateSource = 'builtin' | 'user'
+export type TemplateCategory = 'course' | 'reading' | 'review' | 'research' | 'analysis' | 'other'
+export type TemplateNodeBehavior = 'fixed' | 'expandable' | 'optional'
+export type TemplateApplyScope = 'node' | 'subtree' | 'map'
 export type NodeColor = 'oat' | 'moss' | 'clay' | 'terracotta' | 'river' | 'plum' | 'ink'
 export type NodeShape = 'rounded' | 'pill' | 'rect' | 'underline'
 export type LineStyle = 'solid' | 'dashed' | 'dotted'
@@ -53,6 +58,100 @@ export interface ViewportState {
   x: number
   y: number
   zoom: number
+}
+
+export interface TemplateNode {
+  key: string
+  parentKey: string | null
+  order: number
+  title: string
+  summary: string
+  detailMarkdown: string
+  style: NodeStyle
+  collapsed: boolean
+  manualOffset: ManualOffset
+  aiBehavior: TemplateNodeBehavior
+}
+
+export interface TemplateAsset {
+  path: string
+  sha256: string
+  mime: string
+  size: number
+}
+
+export interface TemplateVariableDefinition {
+  key: string
+  label: string
+  defaultValue?: string
+}
+
+export interface MindMapTemplate {
+  schemaVersion: 1
+  id: string
+  name: string
+  description: string
+  category: TemplateCategory
+  kind: TemplateKind
+  source: TemplateSource
+  createdAt: string
+  updatedAt: string
+  revision: string
+  title: string
+  rootKey: string
+  nodes: Record<string, TemplateNode>
+  assets: Record<string, TemplateAsset>
+  viewport: ViewportState
+  variables: TemplateVariableDefinition[]
+  aiRecommendationEnabled: boolean
+}
+
+export interface TemplateSummary {
+  id: string
+  name: string
+  description: string
+  category: TemplateCategory
+  kind: TemplateKind
+  source: TemplateSource
+  createdAt: string
+  updatedAt: string
+  revision: string
+  nodeCount: number
+  assetCount: number
+  topLevelTitles: string[]
+  aiRecommendationEnabled: boolean
+}
+
+export interface TemplateDetail {
+  template: MindMapTemplate
+}
+
+export interface SaveTemplateInput {
+  document: MindMapDocument
+  rootNodeId: string
+  name: string
+  description: string
+  category: TemplateCategory
+  behaviors: Record<string, TemplateNodeBehavior>
+}
+
+export interface UpdateTemplateInput extends SaveTemplateInput {
+  id: string
+}
+
+export interface StylePreset {
+  schemaVersion: 1
+  id: string
+  name: string
+  source: TemplateSource
+  style: NodeStyle
+  createdAt: string
+  updatedAt: string
+}
+
+export interface SaveStylePresetInput {
+  name: string
+  style: NodeStyle
 }
 
 export interface MindMapDocument {
@@ -174,8 +273,12 @@ export interface AiPreviewNode {
   id: string
   title: string
   summary: string
+  detailMarkdown?: string
   included: boolean
   children: AiPreviewNode[]
+  templateNodeKey?: string
+  aiBehavior?: TemplateNodeBehavior
+  locked?: boolean
 }
 
 export interface AiPreview {
@@ -183,6 +286,11 @@ export interface AiPreview {
   summary: string
   children: AiPreviewNode[]
   targetNodeId?: string
+  corrections?: {
+    restored: number
+    replaced: number
+    ignored: number
+  }
   createdAt: string
 }
 
@@ -199,6 +307,9 @@ export interface AiSession {
   pendingQuestions: AiQuestion[]
   clarificationRound: number
   pendingPreview: AiPreview | null
+  recommendedTemplateIds?: string[]
+  selectedTemplateId?: string
+  selectedTemplateRevision?: string
   updatedAt: string
 }
 
@@ -235,12 +346,15 @@ export interface AiConsultResult {
   questions: AiQuestion[]
   round: number
   assistantText: string
+  templateRecommendations?: TemplateSummary[]
 }
 
 export interface AiGenerateRequest {
   session: AiSession
   mapContext: string
   progressId: string
+  templateId?: string
+  templateRevision?: string
 }
 
 export interface AiProgress {

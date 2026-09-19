@@ -11,17 +11,22 @@ import type {
   AppSettings,
   ExportRequest,
   MindMapDocument,
+  SaveStylePresetInput,
+  SaveTemplateInput,
   ThemeMode,
+  UpdateTemplateInput,
   WindowCommand,
   WorkspaceDescriptor
 } from '@shared/types'
 import { AiService } from './ai'
+import { TemplateService } from './templates'
 import { AppError, WorkspaceService } from './workspace'
 
 const currentDirectory = dirname(fileURLToPath(import.meta.url))
 if (process.env.ZHITU_USER_DATA) app.setPath('userData', process.env.ZHITU_USER_DATA)
 const service = new WorkspaceService()
-const aiService = new AiService(service)
+const templateService = new TemplateService(service)
+const aiService = new AiService(service, templateService)
 let mainWindow: BrowserWindow | null = null
 
 protocol.registerSchemesAsPrivileged([
@@ -179,6 +184,22 @@ function registerIpc(): void {
   handle(IPC.importAssetBytes, (bytes: number[], name: string) => service.importAssetBytes(bytes, name))
   handle(IPC.importMarkdown, () => service.importMarkdown())
   handle(IPC.saveExport, (request: ExportRequest) => service.saveExport(request))
+  handle(IPC.templatesList, () => templateService.listTemplates())
+  handle(IPC.templatesGet, (id: string) => templateService.getTemplate(id))
+  handle(IPC.templatesSave, (input: SaveTemplateInput) => templateService.saveTemplate(input))
+  handle(IPC.templatesInstantiate, (id: string, title?: string) => templateService.instantiate(id, title))
+  handle(IPC.templatesInstantiateAi, (id: string, preview: import('@shared/types').AiPreview, title?: string) => templateService.instantiateAi(id, preview, title))
+  handle(IPC.templatesRename, (id: string, name: string) => templateService.renameTemplate(id, name))
+  handle(IPC.templatesUpdate, (input: UpdateTemplateInput) => templateService.updateTemplate(input))
+  handle(IPC.templatesRemove, (id: string) => templateService.removeTemplate(id))
+  handle(IPC.templatesImport, () => templateService.importTemplate())
+  handle(IPC.templatesExport, (id: string) => templateService.exportTemplate(id))
+  handle(IPC.templatesSetAiRecommendation, (id: string, enabled: boolean) => templateService.setAiRecommendation(id, enabled))
+  handle(IPC.templatesSetBehaviors, (id: string, behaviors: Record<string, import('@shared/types').TemplateNodeBehavior>) => templateService.setBehaviors(id, behaviors))
+  handle(IPC.presetsList, () => templateService.listPresets())
+  handle(IPC.presetsSave, (input: SaveStylePresetInput) => templateService.savePreset(input))
+  handle(IPC.presetsRename, (id: string, name: string) => templateService.renamePreset(id, name))
+  handle(IPC.presetsRemove, (id: string) => templateService.removePreset(id))
   handle(IPC.aiGetConfig, () => aiService.getConfig())
   handle(IPC.aiSaveConfig, (input: AiConfigInput) => aiService.saveConfig(input))
   handle(IPC.aiTestConnection, (input?: AiConfigInput) => aiService.testConnection(input))

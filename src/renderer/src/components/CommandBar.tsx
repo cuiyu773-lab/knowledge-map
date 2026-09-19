@@ -26,6 +26,7 @@ import { getCanvasCommands } from '@renderer/lib/canvasBridge'
 import { useAiStore } from '@renderer/stores/aiStore'
 import { useMapStore } from '@renderer/stores/mapStore'
 import { useWorkspaceStore } from '@renderer/stores/workspaceStore'
+import { useTemplateStore } from '@renderer/stores/templateStore'
 
 function saveLabel(saving: boolean, dirty: boolean, error: string | null): string {
   if (saving) return '保存中…'
@@ -81,6 +82,9 @@ export function CommandBar() {
   const settings = useWorkspaceStore((state) => state.settings)
   const selectMap = useWorkspaceStore((state) => state.selectMap)
   const createMap = useWorkspaceStore((state) => state.createMap)
+  const createMapFromTemplate = useTemplateStore((state) => state.createMapFromTemplate)
+  const openTemplatePicker = useTemplateStore((state) => state.openPicker)
+  const setTemplateManagerOpen = useTemplateStore((state) => state.setManagerOpen)
   const importMarkdown = useWorkspaceStore((state) => state.importMarkdown)
   const deleteMap = useWorkspaceStore((state) => state.deleteMap)
   const closeWorkspace = useWorkspaceStore((state) => state.closeWorkspace)
@@ -113,8 +117,10 @@ export function CommandBar() {
   }
 
   const newMap = async () => {
-    const title = window.prompt('新导图名称', '新导图')
-    if (title?.trim()) await createMap(title.trim())
+    const picked = await openTemplatePicker('map')
+    if (picked === null) return
+    if (picked === 'blank') await createMap('新导图')
+    else await createMapFromTemplate(picked.id, picked.name)
   }
 
   const removeMap = async () => {
@@ -227,6 +233,7 @@ export function CommandBar() {
               <DropdownMenu.Item className="menu-item" onSelect={() => setMaterialsOpen(true)}><Import size={15} />课程资料库</DropdownMenu.Item>
               <DropdownMenu.Item className="menu-item" onSelect={() => setAiConfigOpen(true)}><Sparkles size={15} />AI 配置</DropdownMenu.Item>
               <DropdownMenu.Item className="menu-item" disabled={aiGenerating} onSelect={() => void newMap()}><FilePlus2 size={15} />新建导图</DropdownMenu.Item>
+              <DropdownMenu.Item className="menu-item" onSelect={() => setTemplateManagerOpen(true)}><GalleryHorizontalEnd size={15} />模板与预设</DropdownMenu.Item>
               <DropdownMenu.Item className="menu-item" onSelect={() => void window.zhitu.workspace.reveal(descriptor?.path ?? '')}><FolderOpen size={15} />在文件管理器中显示</DropdownMenu.Item>
               <DropdownMenu.Separator className="menu-separator" />
               <DropdownMenu.Item className="menu-item menu-item--danger" disabled={aiGenerating} onSelect={() => void removeMap()}><Trash2 size={15} />删除当前导图</DropdownMenu.Item>

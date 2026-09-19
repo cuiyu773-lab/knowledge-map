@@ -6,7 +6,9 @@ import type {
   AiQuestion,
   AiSession,
   MindMapDocument,
-  MindNode
+  MindMapTemplate,
+  MindNode,
+  NodeStyle
 } from './types'
 import { getChildren, getNodePath } from './tree'
 
@@ -107,12 +109,126 @@ function previewNodeFromUnknown(raw: unknown, budget: { remaining: number }): Ai
     id: createId(),
     title,
     summary: cleanText(raw.summary, 240),
+    detailMarkdown: cleanText(raw.detailMarkdown, 4_000),
     included: raw.included !== false,
     children
   }
 }
 
-export function parseAiPreview(raw: unknown, targetNodeId?: string): AiPreview {
+function templateRawIndex(raw: unknown): Map<string, Record<string, unknown>> {
+  const result = new Map<string, Record<string, unknown>>()
+  const visit = (value: unknown) => {
+    if (!isRecord(value)) return
+    const key = cleanText(value.templateKey ?? value.templateNodeKey ?? value.key, 160)
+    if (key) result.set(key, value)
+    if (Array.isArray(value.children)) value.children.forEach(visit)
+  }
+  visit(raw)
+  return result
+}
+
+function createPreviewNode(raw: unknown, budget: { remaining: number }): AiPreviewNode | null {
+  if (!isRecord(raw) || budget.remaining <= 0) return null
+  const title = cleanText(raw.title, 80)
+  if (!title) return null
+  budget.remaining -= 1
+  const children = Array.isArray(raw.children)
+    ? raw.children.map((child) => createPreviewNode(child, budget)).filter((child): child is AiPreviewNode => child !== null)
+    : []
+  return {
+    id: createId(),
+    title,
+    summary: cleanText(raw.summary, 240),
+    detailMarkdown: cleanText(raw.detailMarkdown, 4_000),
+    included: raw.included !== false,
+    children
+  }
+}
+
+function mergeTemplatePreview(
+  raw: unknown,
+  template: MindMapTemplate,
+  targetNodeId?: string
+): AiPreview {
+  if (!isRecord(raw)) throw new Error('模型返回的大纲格式无效')
+  const rawIndex = templateRawIndex(raw)
+  const corrections = { restored: 0, replaced: 0, ignored: 0 }
+  const budget = { remaining: MAX_PREVIEW_NODES }
+
+  const childrenOf = (value: Record<string, unknown> | undefined): unknown[] =>
+    value && Array.isArray(value.children) ? value.children : []
+
+  const buildNewNode = (rawNode: unknown): AiPreviewNode | null => {
+    const node = createPreviewNode(rawNode, budget)
+    if (!node) {
+      if (rawNode) corrections.ignored += 1
+      return null
+    }
+    return node
+  }
+
+  const buildTemplateNode = (key: string): AiPreviewNode | null => {
+    const templateNode = template.nodes[key]
+    if (!templateNode || budget.remaining <= 0) return null
+    const rawNode = rawIndex.get(key)
+    if (!rawNode && templateNode.aiBehavior === 'optional') return null
+    if (!rawNode) corrections.restored += 1
+    if (rawNode?.included === false && templateNode.aiBehavior === 'optional') return null
+    const changedTitle = Boolean(rawNode && cleanText(rawNode.title, 80) && cleanText(rawNode.title, 80) !== templateNode.title)
+    const changedProtectedSummary = Boolean(rawNode && templateNode.summary && cleanText(rawNode.summary, 240) !== templateNode.summary)
+    const changedProtectedDetail = Boolean(rawNode && templateNode.detailMarkdown && cleanText(rawNode.detailMarkdown, 4_000) !== templateNode.detailMarkdown)
+    if (changedTitle || changedProtectedSummary || changedProtectedDetail) {
+      corrections.replaced += 1
+    }
+    budget.remaining -= 1
+    const canFill = templateNode.aiBehavior !== 'fixed'
+    const summary = templateNode.summary || (canFill ? cleanText(rawNode?.summary, 240) : '')
+    const detailMarkdown = templateNode.detailMarkdown || (canFill ? cleanText(rawNode?.detailMarkdown, 4_000) : '')
+    const templateChildren = Object.values(template.nodes)
+      .filter((item) => item.parentKey === key)
+      .sort((a, b) => a.order - b.order)
+      .map((item) => buildTemplateNode(item.key))
+      .filter((item): item is AiPreviewNode => item !== null)
+    const extraChildren: AiPreviewNode[] = []
+    if (canFill) {
+      for (const childRaw of childrenOf(rawNode)) {
+        if (!isRecord(childRaw)) continue
+        if (cleanText(childRaw.templateKey ?? childRaw.templateNodeKey ?? childRaw.key, 160)) continue
+        const child = buildNewNode(childRaw)
+        if (child) extraChildren.push(child)
+      }
+    } else {
+      corrections.ignored += childrenOf(rawNode).filter((child) =>
+        isRecord(child) && !cleanText(child.templateKey ?? child.templateNodeKey ?? child.key, 160)
+      ).length
+    }
+    return {
+      id: createId(),
+      title: templateNode.title,
+      summary,
+      detailMarkdown,
+      included: true,
+      locked: templateNode.aiBehavior === 'fixed',
+      templateNodeKey: key,
+      aiBehavior: templateNode.aiBehavior,
+      children: [...templateChildren, ...extraChildren]
+    }
+  }
+
+  const root = buildTemplateNode(template.rootKey)
+  if (!root) throw new Error('模板根节点无效')
+  return {
+    title: root.title,
+    summary: root.summary,
+    children: root.children,
+    ...(targetNodeId ? { targetNodeId } : {}),
+    corrections,
+    createdAt: new Date().toISOString()
+  }
+}
+
+export function parseAiPreview(raw: unknown, targetNodeId?: string, template?: MindMapTemplate): AiPreview {
+  if (template) return mergeTemplatePreview(raw, template, targetNodeId)
   if (!isRecord(raw)) throw new Error('模型返回的大纲格式无效')
   const budget = { remaining: MAX_PREVIEW_NODES }
   const children = Array.isArray(raw.children)
@@ -155,7 +271,7 @@ function createBranch(
     order,
     title: node.title,
     summary: node.summary,
-    detailMarkdown: '',
+    detailMarkdown: node.detailMarkdown ?? '',
     style: { ...DEFAULT_NODE_STYLE },
     collapsed: false,
     manualOffset: { x: 0, y: 0 }
@@ -189,7 +305,8 @@ function mergeBranches(
     }
     nodes[matched.id] = {
       ...matched,
-      summary: branch.summary || matched.summary
+      summary: branch.summary || matched.summary,
+      detailMarkdown: (branch.detailMarkdown ?? '') || matched.detailMarkdown
     }
     mergeBranches({ ...document, nodes }, matched.id, branch.children, nodes)
   }
@@ -228,7 +345,8 @@ export function createRootFromAiPreview(
     [root.id]: {
       ...root,
       title: preview.title,
-      summary: preview.summary
+      summary: preview.summary,
+      detailMarkdown: ''
     }
   }
   preview.children.forEach((child, index) => createBranch(child, root.id, index, nodes))
@@ -237,6 +355,65 @@ export function createRootFromAiPreview(
     title: preview.title,
     nodes,
     updatedAt: new Date().toISOString()
+  }
+}
+
+export function createMapFromAiTemplatePreview(
+  template: MindMapTemplate,
+  preview: AiPreview,
+  title = template.name,
+  now = new Date().toISOString(),
+  idFactory: () => string = createId
+): MindMapDocument {
+  const nodes: Record<string, MindNode> = {}
+  const createNode = (
+    previewNode: AiPreviewNode,
+    parentId: string | null,
+    order: number,
+    inheritedStyle?: NodeStyle
+  ): string | null => {
+    if (!previewNode.included) return null
+    const id = idFactory()
+    const templateNode = previewNode.templateNodeKey ? template.nodes[previewNode.templateNodeKey] : undefined
+    const style = templateNode?.style ?? inheritedStyle ?? DEFAULT_NODE_STYLE
+    nodes[id] = {
+      id,
+      parentId,
+      order,
+      title: previewNode.title,
+      summary: previewNode.summary,
+      detailMarkdown: previewNode.detailMarkdown ?? '',
+      style: { ...style },
+      collapsed: templateNode?.collapsed ?? false,
+      manualOffset: templateNode ? { ...templateNode.manualOffset } : { x: 0, y: 0 }
+    }
+    let childOrder = 0
+    previewNode.children.forEach((child) => {
+      if (createNode(child, id, childOrder, style)) childOrder += 1
+    })
+    return id
+  }
+  const rootId = createNode({
+    id: createId(),
+    title: preview.title,
+    summary: preview.summary,
+    detailMarkdown: template.nodes[template.rootKey]?.detailMarkdown ?? '',
+    included: true,
+    templateNodeKey: template.rootKey,
+    aiBehavior: 'fixed',
+    locked: true,
+    children: preview.children
+  }, null, 0)
+  if (!rootId) throw new Error('AI 预览没有可创建的节点')
+  return {
+    schemaVersion: 1,
+    id: idFactory(),
+    title: title.trim().slice(0, 200) || template.name,
+    createdAt: now,
+    updatedAt: now,
+    rootId,
+    nodes,
+    viewport: { ...template.viewport }
   }
 }
 

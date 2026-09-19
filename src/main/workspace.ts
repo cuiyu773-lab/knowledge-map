@@ -243,10 +243,44 @@ export class WorkspaceService {
   async createMap(title = '未命名导图'): Promise<{ summary: MapSummary; document: MindMapDocument }> {
     const id = randomUUID()
     const document = createMindMapDocument(id, randomUUID(), title)
-    await this.writeMapFile(document)
-    const summary = await this.summaryFor(document)
+    return this.createMapFromDocument(document)
+  }
+
+  async createMapFromDocument(document: MindMapDocument): Promise<{ summary: MapSummary; document: MindMapDocument }> {
+    const parsed = parseMindMapDocument(document)
+    await this.writeMapFile(parsed)
+    const summary = await this.summaryFor(parsed)
     await this.syncMapOrder()
-    return { summary, document }
+    return { summary, document: parsed }
+  }
+
+  async copyWorkspaceAsset(relativePath: string, buffer: Buffer): Promise<string> {
+    const normalized = assertSafeRelative(relativePath)
+    const target = this.resolveAsset(normalized)
+    await fs.mkdir(path.dirname(target), { recursive: true })
+    await fs.writeFile(target, buffer, { flag: 'wx' }).catch((error: NodeJS.ErrnoException) => {
+      if (error.code !== 'EEXIST') throw error
+    })
+    return normalized
+  }
+
+  async readWorkspaceAsset(relativePath: string): Promise<Buffer> {
+    return fs.readFile(this.resolveAsset(relativePath))
+  }
+
+  async commitNewMap(document: MindMapDocument): Promise<{ summary: MapSummary; document: MindMapDocument }> {
+    const id = randomUUID()
+    const parsed = parseMindMapDocument({ ...document, id })
+    await this.writeMapFile(parsed)
+    const summary = await this.summaryFor(parsed)
+    await this.syncMapOrder()
+    return { summary, document: parsed }
+  }
+
+  async deleteMapDocumentIfExists(documentId: string): Promise<void> {
+    await fs.unlink(this.mapPath(documentId)).catch((error: NodeJS.ErrnoException) => {
+      if (error.code !== 'ENOENT') throw error
+    })
   }
 
   private async writeMapFile(document: MindMapDocument): Promise<string> {
@@ -472,4 +506,3 @@ export class WorkspaceService {
     }
   }
 }
-

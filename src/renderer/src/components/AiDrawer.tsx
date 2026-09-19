@@ -1,9 +1,11 @@
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu'
 import {
+  BookTemplate,
   Check,
   ChevronDown,
   FilePlus2,
   FileText,
+  Lock,
   LoaderCircle,
   MessageSquareText,
   Settings2,
@@ -18,6 +20,7 @@ import type { AiPreviewNode, AiQuestionAnswer } from '@shared/types'
 import { useAiStore } from '@renderer/stores/aiStore'
 import { useMapStore } from '@renderer/stores/mapStore'
 import { useWorkspaceStore } from '@renderer/stores/workspaceStore'
+import { useTemplateStore } from '@renderer/stores/templateStore'
 import { AiSettingsDialog } from './AiSettingsDialog'
 import { MaterialLibraryDialog } from './MaterialLibraryDialog'
 
@@ -53,14 +56,16 @@ function PreviewBranch({
           <input
             type="checkbox"
             checked={node.included}
+            disabled={node.locked || (Boolean(node.templateNodeKey) && node.aiBehavior !== 'optional')}
             onChange={(event) => onUpdate(node.id, (current) => ({ ...current, included: event.target.checked }))}
           />
         </label>
+        {node.aiBehavior && <span className={`ai-behavior-mark ai-behavior-mark--${node.aiBehavior}`} title={node.locked ? '固定节点' : node.aiBehavior === 'optional' ? '可选节点' : '可扩充节点'}>{node.locked ? <Lock size={11} /> : node.aiBehavior === 'optional' ? '?' : '+'}</span>}
         <input
           className="ai-preview-title"
           aria-label="主题标题"
           value={node.title}
-          disabled={!node.included}
+          disabled={!node.included || node.locked || Boolean(node.templateNodeKey)}
           onChange={(event) => onUpdate(node.id, (current) => ({ ...current, title: event.target.value.slice(0, 80) }))}
         />
       </div>
@@ -69,10 +74,21 @@ function PreviewBranch({
         aria-label="主题摘要"
         rows={2}
         value={node.summary}
-        disabled={!node.included}
+        disabled={!node.included || node.locked}
         placeholder="摘要"
         onChange={(event) => onUpdate(node.id, (current) => ({ ...current, summary: event.target.value.slice(0, 240) }))}
       />
+      {(node.detailMarkdown || !node.locked) && (
+        <textarea
+          className="ai-preview-detail"
+          aria-label="节点详注"
+          rows={2}
+          value={node.detailMarkdown ?? ''}
+          disabled={!node.included || node.locked}
+          placeholder="Markdown 详注"
+          onChange={(event) => onUpdate(node.id, (current) => ({ ...current, detailMarkdown: event.target.value.slice(0, 4000) }))}
+        />
+      )}
       {node.children.length > 0 && (
         <div className="ai-preview-children">
           {node.children.map((child) => <PreviewBranch key={child.id} node={child} depth={depth + 1} onUpdate={onUpdate} />)}
@@ -97,6 +113,7 @@ export function AiDrawer() {
   const setTargetNode = useAiStore((state) => state.setTargetNode)
   const setScale = useAiStore((state) => state.setScale)
   const setIncludeFullMap = useAiStore((state) => state.setIncludeFullMap)
+  const setSelectedTemplate = useAiStore((state) => state.setSelectedTemplate)
   const toggleMaterial = useAiStore((state) => state.toggleMaterial)
   const updatePreview = useAiStore((state) => state.updatePreview)
   const submitPrompt = useAiStore((state) => state.submitPrompt)
@@ -112,6 +129,8 @@ export function AiDrawer() {
   const activeMapId = useWorkspaceStore((state) => state.activeMapId)
   const selectedNodeId = useMapStore((state) => state.selectedNodeId)
   const document = useMapStore((state) => state.document)
+  const templates = useTemplateStore((state) => state.templates)
+  const openTemplatePicker = useTemplateStore((state) => state.openPicker)
   const [prompt, setPrompt] = useState('')
   const [answers, setAnswers] = useState<Record<string, string>>({})
   const scrollRef = useRef<HTMLDivElement>(null)
@@ -120,6 +139,10 @@ export function AiDrawer() {
     () => materials.filter((material) => session?.materialIds.includes(material.id)),
     [materials, session?.materialIds]
   )
+  const selectedTemplate = templates.find((item) => item.id === session?.selectedTemplateId)
+  const recommendedTemplates = (session?.recommendedTemplateIds ?? [])
+    .map((id) => templates.find((item) => item.id === id))
+    .filter((item): item is NonNullable<typeof item> => Boolean(item))
 
   useEffect(() => {
     if (!open || !activeMapId) return
@@ -260,17 +283,33 @@ export function AiDrawer() {
             </section>
           ) : null}
 
+          {session?.mode === 'new' && !session.selectedTemplateId && recommendedTemplates.length > 0 ? (
+            <section className="ai-template-recommendations">
+              <div className="ai-section-title"><span>推荐模板</span><small>选择后再生成</small></div>
+              <div className="ai-template-recommendation-list">
+                {recommendedTemplates.map((item) => (
+                  <button key={item.id} type="button" disabled={generating} onClick={() => setSelectedTemplate(item.id, item.revision)}>
+                    <BookTemplate size={15} /><span><strong>{item.name}</strong><small>{item.description || item.topLevelTitles.join(' · ')}</small></span>
+                  </button>
+                ))}
+              </div>
+            </section>
+          ) : null}
+
           {session?.pendingPreview ? (
             <section className="ai-preview-panel">
               <div className="ai-section-title">
                 <span>大纲预览</span>
                 <small>{countIncluded(session.pendingPreview.children)} 个节点</small>
               </div>
+              {session.pendingPreview.corrections && (session.pendingPreview.corrections.restored || session.pendingPreview.corrections.replaced || session.pendingPreview.corrections.ignored) ? (
+                <div className="ai-correction-note">已自动校正模板：恢复 {session.pendingPreview.corrections.restored} 个节点，还原 {session.pendingPreview.corrections.replaced} 处标题，忽略 {session.pendingPreview.corrections.ignored} 个越权分支。</div>
+              ) : null}
               <label className="field ai-preview-root">
                 <span>根主题</span>
                 <input
                   value={session.pendingPreview.title}
-                  disabled={session.mode === 'extend'}
+                  disabled={session.mode === 'extend' || Boolean(session.selectedTemplateId)}
                   onChange={(event) => updatePreview((preview) => ({ ...preview, title: event.target.value.slice(0, 80) }))}
                 />
               </label>
@@ -280,6 +319,7 @@ export function AiDrawer() {
                   <textarea
                     rows={2}
                     value={session.pendingPreview.summary}
+                    disabled={Boolean(session.selectedTemplateId)}
                     onChange={(event) => updatePreview((preview) => ({ ...preview, summary: event.target.value.slice(0, 240) }))}
                   />
                 </label>
@@ -309,6 +349,14 @@ export function AiDrawer() {
             </button>
             <button className="ai-manage-materials" type="button" onClick={() => setMaterialsOpen(true)}>资料库</button>
           </div>
+          {session?.mode === 'new' ? (
+            <div className="ai-template-picker-row">
+              <button className="ai-template-picker" type="button" disabled={generating} onClick={() => void openTemplatePicker('ai').then((picked) => { if (picked === null) return; if (picked === 'blank') setSelectedTemplate(); else setSelectedTemplate(picked.id, picked.revision) })}>
+                <BookTemplate size={14} />{selectedTemplate ? `模板：${selectedTemplate.name}` : '不使用模板'}
+              </button>
+              {selectedTemplate ? <button type="button" title="清除模板选择" onClick={() => setSelectedTemplate()}><X size={12} /></button> : null}
+            </div>
+          ) : null}
           {selectedMaterials.length > 0 && (
             <div className="ai-material-chips">
               {selectedMaterials.map((material) => (

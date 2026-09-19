@@ -1,6 +1,7 @@
 import { create } from 'zustand'
-import type { AiPreview, AiPreviewStrategy, MindMapDocument, NodeStyle } from '@shared/types'
+import type { AiPreview, AiPreviewStrategy, MindMapDocument, NodeStyle, StylePreset, TemplateApplyScope } from '@shared/types'
 import { applyAiPreview, createRootFromAiPreview } from '@shared/ai'
+import { applyStylePreset as applyStylePresetToDocument } from '@shared/templates'
 import {
   deleteSubtree,
   insertChild,
@@ -37,6 +38,7 @@ interface MapState {
   dropNode: (activeId: string, targetId: string, mode: 'before' | 'inside' | 'after') => void
   patchNode: (nodeId: string, patch: Parameters<typeof updateNode>[2]) => void
   patchStyle: (nodeId: string, style: Partial<NodeStyle>) => void
+  applyStylePreset: (nodeId: string, scope: TemplateApplyScope, preset: StylePreset) => void
   setOffset: (nodeId: string, offset: { x: number; y: number }) => void
   toggleCollapsed: (nodeId: string) => void
   clearOffsets: () => void
@@ -182,6 +184,12 @@ export const useMapStore = create<MapState>((set, get) => {
       const node = document?.nodes[nodeId]
       if (!document || !node) return
       apply(updateNode(document, nodeId, { style: { ...node.style, ...style } }), nodeId)
+    },
+
+    applyStylePreset: (nodeId, scope, preset) => {
+      const document = get().document
+      if (!document || !document.nodes[nodeId]) return
+      apply(applyStylePresetToDocument(document, nodeId, scope, preset.style), nodeId)
     },
 
     setOffset: (nodeId, offset) => {

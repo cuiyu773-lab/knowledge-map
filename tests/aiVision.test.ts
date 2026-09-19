@@ -39,7 +39,7 @@ describe('AiService 视觉识别', () => {
       width: 1,
       height: 1
     }
-    const service = new AiService({} as never)
+    const service = new AiService({} as never, {} as never)
     const callModel = vi.fn().mockResolvedValue(JSON.stringify({
       items: [{ id: visual.id, kind: 'formula', latex: 'a^2+b^2=c^2', markdown: '', confidence: 0.99 }]
     }))

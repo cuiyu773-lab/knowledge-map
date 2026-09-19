@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from 'react'
 import { BookOpenCheck, Clock3, FolderOpen, Plus } from 'lucide-react'
 import { useWorkspaceStore } from '@renderer/stores/workspaceStore'
+import { useTemplateStore } from '@renderer/stores/templateStore'
 
 export function StartupScreen() {
   const [name, setName] = useState('我的学习工作区')
@@ -9,10 +10,14 @@ export function StartupScreen() {
   const createWorkspace = useWorkspaceStore((state) => state.createWorkspace)
   const chooseWorkspace = useWorkspaceStore((state) => state.chooseWorkspace)
   const openWorkspace = useWorkspaceStore((state) => state.openWorkspace)
+  const openTemplatePicker = useTemplateStore((state) => state.openPicker)
 
-  const submit = (event: FormEvent) => {
+  const submit = async (event: FormEvent) => {
     event.preventDefault()
-    if (!busy && name.trim()) void createWorkspace(name.trim())
+    if (busy || !name.trim()) return
+    const picked = await openTemplatePicker('workspace')
+    if (picked === null) return
+    await createWorkspace(name.trim(), picked === 'blank' ? undefined : picked.id)
   }
 
   return (

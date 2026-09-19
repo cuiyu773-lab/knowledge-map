@@ -17,8 +17,14 @@ import type {
   MaterialSummary,
   MindMapDocument,
   RecentWorkspace,
+  SaveStylePresetInput,
+  SaveTemplateInput,
   SnapshotSummary,
+  StylePreset,
+  TemplateDetail,
+  TemplateSummary,
   ThemeMode,
+  UpdateTemplateInput,
   WindowCommand,
   WorkspaceDescriptor
 } from '@shared/types'
@@ -65,6 +71,26 @@ const api = {
   },
   exports: {
     save: (request: ExportRequest) => invoke<string | null>(IPC.saveExport, request)
+  },
+  templates: {
+    list: () => invoke<TemplateSummary[]>(IPC.templatesList),
+    get: (id: string) => invoke<TemplateDetail>(IPC.templatesGet, id),
+    save: (input: SaveTemplateInput) => invoke<TemplateDetail>(IPC.templatesSave, input),
+    instantiate: (id: string, title?: string) => invoke<{ summary: MapSummary; document: MindMapDocument }>(IPC.templatesInstantiate, id, title),
+    instantiateAi: (id: string, preview: AiPreview, title?: string) => invoke<{ summary: MapSummary; document: MindMapDocument }>(IPC.templatesInstantiateAi, id, preview, title),
+    rename: (id: string, name: string) => invoke<TemplateDetail>(IPC.templatesRename, id, name),
+    update: (input: UpdateTemplateInput) => invoke<TemplateDetail>(IPC.templatesUpdate, input),
+    remove: (id: string) => invoke<void>(IPC.templatesRemove, id),
+    importPackage: () => invoke<TemplateDetail | null>(IPC.templatesImport),
+    exportPackage: (id: string) => invoke<string | null>(IPC.templatesExport, id),
+    setAiRecommendation: (id: string, enabled: boolean) => invoke<TemplateDetail>(IPC.templatesSetAiRecommendation, id, enabled),
+    setBehaviors: (id: string, behaviors: Record<string, import('@shared/types').TemplateNodeBehavior>) => invoke<TemplateDetail>(IPC.templatesSetBehaviors, id, behaviors)
+  },
+  presets: {
+    list: () => invoke<StylePreset[]>(IPC.presetsList),
+    save: (input: SaveStylePresetInput) => invoke<StylePreset>(IPC.presetsSave, input),
+    rename: (id: string, name: string) => invoke<StylePreset>(IPC.presetsRename, id, name),
+    remove: (id: string) => invoke<void>(IPC.presetsRemove, id)
   },
   ai: {
     getConfig: () => invoke<AiPublicConfig>(IPC.aiGetConfig),

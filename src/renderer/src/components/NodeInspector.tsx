@@ -1,8 +1,10 @@
 import * as ToggleGroup from '@radix-ui/react-toggle-group'
 import { Braces, CircleDot, Info, Link2, Palette, Trash2, Type } from 'lucide-react'
 import type { LineStyle, NodeColor, NodeShape } from '@shared/types'
+import { useState } from 'react'
 import { getNodePath } from '@shared/tree'
 import { useMapStore } from '@renderer/stores/mapStore'
+import { useTemplateStore } from '@renderer/stores/templateStore'
 import { useWorkspaceStore } from '@renderer/stores/workspaceStore'
 import { RichTextEditor } from './RichTextEditor'
 
@@ -30,12 +32,17 @@ const lines: Array<{ value: LineStyle; label: string }> = [
 ]
 
 export function NodeInspector() {
+  const [presetScope, setPresetScope] = useState<'node' | 'subtree' | 'map'>('subtree')
   const document = useMapStore((state) => state.document)
   const selectedNodeId = useMapStore((state) => state.selectedNodeId)
   const patchNode = useMapStore((state) => state.patchNode)
   const patchStyle = useMapStore((state) => state.patchStyle)
   const removeSelected = useMapStore((state) => state.removeSelected)
   const showToast = useWorkspaceStore((state) => state.showToast)
+  const presets = useTemplateStore((state) => state.presets)
+  const applyPreset = useTemplateStore((state) => state.applyPreset)
+  const savePreset = useTemplateStore((state) => state.savePreset)
+  const setTemplateManagerOpen = useTemplateStore((state) => state.setManagerOpen)
   const node = document && selectedNodeId ? document.nodes[selectedNodeId] : null
   if (!document || !node) {
     return <aside className="inspector-panel"><p className="empty-copy">选择一个节点后在这里编辑完整内容。</p></aside>
@@ -98,6 +105,12 @@ export function NodeInspector() {
           >
             {shapes.map((shape) => <ToggleGroup.Item key={shape.value} value={shape.value}>{shape.label}</ToggleGroup.Item>)}
           </ToggleGroup.Root>
+          <div className="preset-apply-panel">
+            <div className="preset-apply-heading"><span>样式预设</span><button type="button" onClick={() => setTemplateManagerOpen(true)}>管理</button></div>
+            <div className="segmented preset-scope"><button className={presetScope === 'node' ? 'is-active' : ''} type="button" onClick={() => setPresetScope('node')}>当前</button><button className={presetScope === 'subtree' ? 'is-active' : ''} type="button" onClick={() => setPresetScope('subtree')}>子树</button><button className={presetScope === 'map' ? 'is-active' : ''} type="button" onClick={() => setPresetScope('map')}>整图</button></div>
+            <div className="preset-chip-list">{presets.map((preset) => <button key={preset.id} type="button" title={preset.name} onClick={() => applyPreset(preset.id, node.id, presetScope)}><span className={`color-swatch color-swatch--${preset.style.color}`} />{preset.name}</button>)}</div>
+            <button className="button button--small button--wide" type="button" onClick={() => { const name = window.prompt('样式预设名称', '我的样式'); if (name?.trim()) void savePreset({ name: name.trim(), style: node.style }) }}>保存当前样式为预设</button>
+          </div>
         </section>
 
         <section className="inspector-section">

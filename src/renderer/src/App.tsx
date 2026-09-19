@@ -2,6 +2,7 @@ import { useEffect } from 'react'
 import { LoaderCircle } from 'lucide-react'
 import { useAiStore } from '@renderer/stores/aiStore'
 import { useWorkspaceStore } from '@renderer/stores/workspaceStore'
+import { useTemplateStore } from '@renderer/stores/templateStore'
 import { AppMenuBar } from './components/AppMenuBar'
 import { ConflictDialog } from './components/ConflictDialog'
 import { SearchOverlay } from './components/SearchOverlay'
@@ -9,16 +10,20 @@ import { SnapshotDialog } from './components/SnapshotDialog'
 import { StartupScreen } from './components/StartupScreen'
 import { Toast } from './components/Toast'
 import { WorkspaceShell } from './components/WorkspaceShell'
+import { TemplateManagerDialog } from './components/TemplateManagerDialog'
+import { TemplatePickerDialog } from './components/TemplatePickerDialog'
+import { TemplateSaveDialog } from './components/TemplateSaveDialog'
 
 export function App() {
   const initializing = useWorkspaceStore((state) => state.initializing)
   const descriptor = useWorkspaceStore((state) => state.descriptor)
   const settings = useWorkspaceStore((state) => state.settings)
   const initialize = useWorkspaceStore((state) => state.initialize)
+  const initializeTemplates = useTemplateStore((state) => state.initialize)
 
   useEffect(() => {
-    void initialize()
-  }, [initialize])
+    void Promise.all([initialize(), initializeTemplates()])
+  }, [initialize, initializeTemplates])
 
   useEffect(() => {
     document.documentElement.dataset.theme = settings.theme
@@ -39,6 +44,9 @@ export function App() {
       <ConflictDialog />
       <SnapshotDialog />
       <SearchOverlay />
+      <TemplatePickerDialog />
+      <TemplateManagerDialog />
+      <TemplateSaveDialog />
       <Toast />
     </>
   )

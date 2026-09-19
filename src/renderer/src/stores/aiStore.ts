@@ -40,6 +40,7 @@ interface AiState {
   setTargetNode: (nodeId: string) => void
   setScale: (scale: AiScale) => void
   setIncludeFullMap: (include: boolean) => void
+  setSelectedTemplate: (templateId?: string, revision?: string) => void
   toggleMaterial: (id: string) => void
   updatePreview: (updater: (preview: AiPreview) => AiPreview) => void
   submitPrompt: (prompt: string) => Promise<void>
@@ -123,7 +124,8 @@ export const useAiStore = create<AiState>((set, get) => {
       ...session,
       messages: [...session.messages, assistant],
       pendingQuestions: result.value.kind === 'questions' ? result.value.questions : [],
-      clarificationRound: result.value.round
+      clarificationRound: result.value.round,
+      recommendedTemplateIds: result.value.templateRecommendations?.map((item) => item.id) ?? []
     }
     set({ session: next, generating: false, progressId: null, progress: null })
     await persist(next)
@@ -225,7 +227,10 @@ export const useAiStore = create<AiState>((set, get) => {
         ...session,
         mode: 'extend' as const,
         targetNodeId: selectedNodeId,
-        materialIds: normalizeAiMaterialIds(current.materialIds)
+        materialIds: normalizeAiMaterialIds(current.materialIds),
+        recommendedTemplateIds: [],
+        selectedTemplateId: undefined,
+        selectedTemplateRevision: undefined
       }
       set({ session: next, error: null })
       await persist(next)
@@ -252,6 +257,17 @@ export const useAiStore = create<AiState>((set, get) => {
       setSession(next)
     },
 
+    setSelectedTemplate: (templateId, revision) => {
+      const session = get().session
+      if (!session || session.mode !== 'new' || get().generating) return
+      const next = { ...session, selectedTemplateId: templateId, selectedTemplateRevision: revision, pendingPreview: null }
+      if (!templateId) {
+        delete next.selectedTemplateId
+        delete next.selectedTemplateRevision
+      }
+      setSession(next)
+    },
+
     toggleMaterial: (id) => {
       const session = get().session
       if (!session || get().generating) return
@@ -275,7 +291,8 @@ export const useAiStore = create<AiState>((set, get) => {
         ...session,
         messages: [...session.messages, makeMessage('user', 'text', normalized)],
         pendingQuestions: [],
-        pendingPreview: null
+        pendingPreview: null,
+        recommendedTemplateIds: []
       }
       set({ session: withMessage, error: null })
       await persist(withMessage)
@@ -306,7 +323,13 @@ export const useAiStore = create<AiState>((set, get) => {
           : ''
       const progressId = crypto.randomUUID()
       set({ generating: true, progressId, progress: null, error: null })
-      const result = await window.zhitu.ai.generate({ session, mapContext, progressId })
+      const result = await window.zhitu.ai.generate({
+        session,
+        mapContext,
+        progressId,
+        templateId: session.selectedTemplateId,
+        templateRevision: session.selectedTemplateRevision
+      })
       if (!result.ok) {
         set({ generating: false, progressId: null, progress: null, error: result.error.message })
         if (result.error.code !== 'AI_CANCELED') useWorkspaceStore.getState().showToast(result.error.message, 'error')
@@ -347,17 +370,32 @@ export const useAiStore = create<AiState>((set, get) => {
       const session = get().session
       const preview = session?.pendingPreview
       if (!session || !preview) return false
-      const summary = await useWorkspaceStore.getState().createMap(preview.title)
-      if (!summary) return false
-      useMapStore.getState().applyGeneratedRoot(preview)
-      await useMapStore.getState().save()
+      let summaryId: string
+      if (session.selectedTemplateId) {
+        const result = await window.zhitu.templates.instantiateAi(session.selectedTemplateId, preview, preview.title)
+        if (!result.ok) {
+          useWorkspaceStore.getState().showToast(result.error.message, 'error')
+          return false
+        }
+        summaryId = result.value.summary.id
+        await useWorkspaceStore.getState().adoptCreatedMap(result.value.summary, result.value.document)
+      } else {
+        const summary = await useWorkspaceStore.getState().createMap(preview.title)
+        if (!summary) return false
+        summaryId = summary.id
+        useMapStore.getState().applyGeneratedRoot(preview)
+        await useMapStore.getState().save()
+      }
       const next: AiSession = {
         ...session,
-        mapId: summary.id,
+        mapId: summaryId,
         draftId: null,
         mode: 'new',
         targetNodeId: null,
-        pendingPreview: null
+        pendingPreview: null,
+        recommendedTemplateIds: [],
+        selectedTemplateId: undefined,
+        selectedTemplateRevision: undefined
       }
       set({ session: next })
       await persist(next)
