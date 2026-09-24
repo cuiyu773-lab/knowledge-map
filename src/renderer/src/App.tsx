@@ -5,6 +5,7 @@ import { useWorkspaceStore } from '@renderer/stores/workspaceStore'
 import { useTemplateStore } from '@renderer/stores/templateStore'
 import { AppMenuBar } from './components/AppMenuBar'
 import { ConflictDialog } from './components/ConflictDialog'
+import { PackageImportDialog } from './components/PackageImportDialog'
 import { SearchOverlay } from './components/SearchOverlay'
 import { SnapshotDialog } from './components/SnapshotDialog'
 import { StartupScreen } from './components/StartupScreen'
@@ -42,6 +43,7 @@ export function App() {
         </div>
       </div>
       <ConflictDialog />
+      <PackageImportDialog />
       <SnapshotDialog />
       <SearchOverlay />
       <TemplatePickerDialog />

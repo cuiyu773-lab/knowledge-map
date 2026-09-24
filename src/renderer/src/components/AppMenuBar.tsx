@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu'
-import { BookTemplate, Check, ChevronRight, LibraryBig } from 'lucide-react'
+import { BookTemplate, Check, ChevronRight, FileArchive, LibraryBig, PackageOpen } from 'lucide-react'
 import type { ExportFormat, ExportQuality, ThemeMode, WindowCommand } from '@shared/types'
 import { getCanvasCommands } from '@renderer/lib/canvasBridge'
 import { useAiStore } from '@renderer/stores/aiStore'
@@ -76,6 +76,8 @@ export function AppMenuBar() {
   const setTemplateSaveOpen = useTemplateStore((state) => state.setSaveOpen)
   const setTemplateManagerOpen = useTemplateStore((state) => state.setManagerOpen)
   const importMarkdown = useWorkspaceStore((state) => state.importMarkdown)
+  const exportPackage = useWorkspaceStore((state) => state.exportPackage)
+  const prepareImport = useWorkspaceStore((state) => state.prepareImport)
   const setExportQuality = useWorkspaceStore((state) => state.setExportQuality)
   const setSearchOpen = useWorkspaceStore((state) => state.setSearchOpen)
   const setSnapshotsOpen = useWorkspaceStore((state) => state.setSnapshotsOpen)
@@ -239,8 +241,14 @@ export function AppMenuBar() {
               <DropdownMenu.Item className="menu-item" disabled={!mapDocument || readOnly || !selectedNodeId || selectedNodeId === mapDocument.rootId} onSelect={() => selectedNodeId && setTemplateSaveOpen(true, selectedNodeId)}>
                 <span><BookTemplate size={15} />将当前主题保存为模板…</span>
               </DropdownMenu.Item>
+              <DropdownMenu.Item className="menu-item" disabled={!mapDocument || readOnly || busy} onSelect={() => void exportPackage()}>
+                <span><FileArchive size={15} />导出工程包…</span>
+              </DropdownMenu.Item>
               <DropdownMenu.Item className="menu-item" disabled={!descriptor || busy} onSelect={() => void importMarkdown()}>
                 <span>导入 Markdown…</span>
+              </DropdownMenu.Item>
+              <DropdownMenu.Item className="menu-item" disabled={!descriptor || busy} onSelect={() => void prepareImport()}>
+                <span><PackageOpen size={15} />导入工程包…</span>
               </DropdownMenu.Item>
               <DropdownMenu.Sub>
                 <DropdownMenu.SubTrigger className="menu-item" disabled={!mapDocument || busy}>
