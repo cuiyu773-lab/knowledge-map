@@ -375,6 +375,13 @@ input:focus-visible, textarea:focus-visible, button:focus-visible, [contentedita
 .dialog-title { display: flex; align-items: center; gap: 8px; margin: 0; font-family: var(--font-serif); font-size: 19px; }
 .dialog-description { margin: 12px 0 18px; color: var(--ink-soft); line-height: 1.75; font-size: 12px; }
 .dialog-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 22px; }
+.package-summary { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin: 0; }
+.package-summary > div { display: grid; gap: 3px; min-width: 0; padding: 9px 10px; border: 1px solid var(--line-soft); border-radius: 10px; background: color-mix(in srgb, var(--surface-raised) 68%, transparent); }
+.package-summary > div:first-child { grid-column: 1 / -1; }
+.package-summary dt { color: var(--ink-faint); font-size: 10px; font-weight: 700; }
+.package-summary dd { margin: 0; overflow: hidden; font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+.package-conflict { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: start; gap: 8px; margin: 12px 0 0; padding: 10px 11px; border: 1px solid color-mix(in srgb, var(--ochre) 38%, var(--line-soft)); border-radius: 11px; color: var(--ink-soft); background: color-mix(in srgb, var(--ochre) 10%, var(--surface-raised)); font-size: 11px; line-height: 1.7; }
+.package-conflict svg { margin-top: 2px; color: var(--ochre); }
 .snapshot-list { display: grid; gap: 7px; }
 .snapshot-item { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 11px 12px; border: 1px solid var(--line-soft); border-radius: 11px; background: color-mix(in srgb, var(--surface-raised) 64%, transparent); }
 .snapshot-item strong, .snapshot-item small { display: block; }

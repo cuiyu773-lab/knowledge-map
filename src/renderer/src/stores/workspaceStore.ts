@@ -3,6 +3,8 @@ import type {
   AppSettings,
   ConflictState,
   ExportQuality,
+  MapImportStrategy,
+  MapPackagePreview,
   MapSummary,
   PanelVisibility,
   RecentWorkspace,
@@ -29,6 +31,7 @@ interface WorkspaceState {
   conflict: ConflictState | null
   searchOpen: boolean
   snapshotsOpen: boolean
+  packagePreview: MapPackagePreview | null
   initialize: () => Promise<void>
   createWorkspace: (name: string, templateId?: string) => Promise<boolean>
   chooseWorkspace: () => Promise<boolean>
@@ -39,6 +42,10 @@ interface WorkspaceState {
   createMapFromTemplate: (templateId: string, title?: string) => Promise<MapSummary | null>
   adoptCreatedMap: (summary: MapSummary, document: import('@shared/types').MindMapDocument) => Promise<void>
   importMarkdown: () => Promise<void>
+  exportPackage: () => Promise<void>
+  prepareImport: () => Promise<void>
+  commitImport: (strategy: MapImportStrategy) => Promise<void>
+  closePackagePreview: () => void
   deleteMap: (mapId: string) => Promise<void>
   refreshMaps: () => Promise<void>
   setTheme: (theme: ThemeMode) => void
@@ -71,6 +78,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
   conflict: null,
   searchOpen: false,
   snapshotsOpen: false,
+  packagePreview: null,
 
   initialize: async () => {
     const [recentResult, settingsResult] = await Promise.all([
@@ -130,7 +138,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
     await useMapStore.getState().save().catch(() => undefined)
     await window.zhitu.workspace.close()
     useMapStore.getState().reset()
-    set({ descriptor: null, activeMapId: null, searchOpen: false, conflict: null })
+    set({ descriptor: null, activeMapId: null, searchOpen: false, conflict: null, packagePreview: null })
   },
 
   selectMap: async (mapId) => {
@@ -207,6 +215,60 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
       get().showToast('Markdown 已导入', 'success')
     }
   },
+
+  exportPackage: async () => {
+    const document = useMapStore.getState().document
+    if (!document) return
+    set({ busy: true })
+    const result = await window.zhitu.maps.exportPackage(document)
+    set({ busy: false })
+    if (!result.ok) {
+      get().showToast(result.error.message, 'error')
+      return
+    }
+    if (result.value) get().showToast('工程包已导出', 'success')
+  },
+
+  prepareImport: async () => {
+    set({ busy: true })
+    const result = await window.zhitu.maps.prepareImport()
+    set({ busy: false })
+    if (!result.ok) {
+      get().showToast(result.error.message, 'error')
+      return
+    }
+    if (result.value) set({ packagePreview: result.value })
+  },
+
+  commitImport: async (strategy) => {
+    const preview = get().packagePreview
+    if (!preview) return
+    const saved = await useMapStore.getState().save()
+    if (!saved) {
+      get().showToast('保存失败，已取消导入工程包', 'error')
+      return
+    }
+    set({ busy: true })
+    const result = await window.zhitu.maps.commitImport(preview.importId, strategy)
+    set({ busy: false })
+    if (!result.ok) {
+      set({ packagePreview: null })
+      get().showToast(result.error.message, 'error')
+      return
+    }
+    const summary = result.value.summary
+    set((state) => ({
+      packagePreview: null,
+      activeMapId: summary.id,
+      descriptor: state.descriptor
+        ? { ...state.descriptor, maps: [...state.descriptor.maps.filter((map) => map.id !== summary.id), summary] }
+        : null
+    }))
+    await useMapStore.getState().loadMap(summary.id)
+    get().showToast(result.value.overwritten ? '已覆盖导入的导图' : '工程包已导入', 'success')
+  },
+
+  closePackagePreview: () => set({ packagePreview: null }),
 
   deleteMap: async (mapId) => {
     const result = await window.zhitu.maps.trash(mapId)

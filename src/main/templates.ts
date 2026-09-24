@@ -3,6 +3,7 @@ import { createHash, randomUUID } from 'node:crypto'
 import { promises as fs } from 'node:fs'
 import path from 'node:path'
 import { strFromU8, strToU8, unzipSync, zipSync } from 'fflate'
+import { collectAssetReferences } from '@shared/assetReferences'
 import { BUILTIN_STYLE_PRESETS, BUILTIN_TEMPLATES } from '@shared/builtinTemplates'
 import { createMapFromAiTemplatePreview } from '@shared/ai'
 import {
@@ -63,39 +64,6 @@ function safeId(value: string): string {
 function safePresetId(value: string): string {
   if (!/^[a-zA-Z0-9-]{1,120}$/.test(value)) throw new AppError('INVALID_PRESET_ID', '预设标识无效')
   return value
-}
-
-function normalizeAssetReference(source: string): string | null {
-  let value = source.trim().replace(/^zhitu-asset:\/\/workspace\//i, '')
-  if (!value || /^(?:data:|https?:|blob:|file:)/i.test(value)) return null
-  value = value.split('#')[0]!.split('?')[0]!.replace(/\\/g, '/').replace(/^\.\//, '').replace(/^\/+/, '')
-  if (!value.startsWith('assets/') || value.includes('\0') || value.split('/').includes('..')) return null
-  return value
-}
-
-function collectAssetReferences(document: MindMapDocument, rootNodeId: string): Map<string, string[]> {
-  const result = new Map<string, string[]>()
-  const visit = (nodeId: string) => {
-    const node = document.nodes[nodeId]
-    if (!node) return
-    const matches = [
-      ...node.detailMarkdown.matchAll(/!\[[^\]]*\]\(([^)\s]+)(?:\s+["'][^"']*["'])?\)/g),
-      ...node.detailMarkdown.matchAll(/<img[^>]+src=["']([^"']+)["']/gi)
-    ]
-    for (const match of matches) {
-      const normalized = normalizeAssetReference(match[1] ?? '')
-      if (!normalized) continue
-      const targets = result.get(normalized) ?? []
-      targets.push(nodeId)
-      result.set(normalized, targets)
-    }
-    Object.values(document.nodes)
-      .filter((child) => child.parentId === nodeId)
-      .sort((a, b) => a.order - b.order)
-      .forEach((child) => visit(child.id))
-  }
-  visit(rootNodeId)
-  return result
 }
 
 function rewriteAssetReferences(
