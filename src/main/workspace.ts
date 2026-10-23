@@ -22,17 +22,11 @@ import type {
   WorkspaceMeta
 } from '@shared/types'
 import { AppError } from './errors'
+import { validateImage } from './imageAsset'
+import { commitMapPackageFiles } from './mapPackageTransaction'
 import { DEFAULT_APP_SETTINGS, normalizeAppSettings } from '@shared/settings'
 
 export { AppError } from './errors'
-
-const IMAGE_TYPES = new Map([
-  ['.png', 'image/png'],
-  ['.jpg', 'image/jpeg'],
-  ['.jpeg', 'image/jpeg'],
-  ['.webp', 'image/webp'],
-  ['.gif', 'image/gif']
-])
 
 function nowIso(): string {
   return new Date().toISOString()
@@ -45,10 +39,6 @@ function safeName(value: string): string {
 
 function sha256(buffer: Buffer | string): string {
   return createHash('sha256').update(buffer).digest('hex')
-}
-
-function extensionOf(filePath: string): string {
-  return path.extname(filePath).toLowerCase()
 }
 
 function assertSafeRelative(relativePath: string): string {
@@ -71,6 +61,8 @@ async function readJson<T>(filePath: string): Promise<T> {
 }
 
 export class WorkspaceService {
+  private packageImporting = false
+  private readonly mapMutations = new Set<Promise<unknown>>()
   private workspacePath: string | null = null
   private meta: WorkspaceMeta | null = null
   private readonly settingsPath = path.join(app.getPath('userData'), 'settings.json')
@@ -128,6 +120,7 @@ export class WorkspaceService {
   }
 
   async createWorkspace(name: string): Promise<ApiResult<WorkspaceDescriptor>> {
+    this.assertWritable()
     const selection = await dialog.showOpenDialog({
       title: '选择工作区保存位置',
       properties: ['openDirectory', 'createDirectory']
@@ -175,6 +168,7 @@ export class WorkspaceService {
   }
 
   async openWorkspacePath(workspacePath: string): Promise<WorkspaceDescriptor> {
+    this.assertWritable()
     const absolute = path.resolve(workspacePath)
     const rawMeta = await readJson<unknown>(path.join(absolute, 'workspace.json'))
     const meta = parseWorkspaceMeta(rawMeta)
@@ -183,6 +177,7 @@ export class WorkspaceService {
       fs.mkdir(path.join(absolute, 'assets'), { recursive: true }),
       fs.mkdir(path.join(absolute, '.history'), { recursive: true })
     ])
+    this.assertWritable()
     this.workspacePath = absolute
     this.meta = meta
     const descriptor = { path: absolute, meta, maps: await this.listMaps() }
@@ -191,8 +186,22 @@ export class WorkspaceService {
   }
 
   async closeWorkspace(): Promise<void> {
+    this.assertWritable()
     this.workspacePath = null
     this.meta = null
+  }
+
+  /** 记录完整写入操作，导入须等待它们完成，避免自动保存跨越导入提交。 */
+  private trackMapMutation<T>(operation: () => Promise<T>): Promise<T> {
+    this.assertWritable()
+    const pending = operation()
+    this.mapMutations.add(pending)
+    void pending.then(() => this.mapMutations.delete(pending), () => this.mapMutations.delete(pending))
+    return pending
+  }
+
+  private assertWritable(): void {
+    if (this.packageImporting) throw new AppError('WORKSPACE_BUSY', '正在导入工程包，请稍后再操作')
   }
 
   private assertOpen(): string {
@@ -247,39 +256,92 @@ export class WorkspaceService {
   }
 
   async createMapFromDocument(document: MindMapDocument): Promise<{ summary: MapSummary; document: MindMapDocument }> {
-    const parsed = parseMindMapDocument(document)
-    await this.writeMapFile(parsed)
-    const summary = await this.summaryFor(parsed)
-    await this.syncMapOrder()
-    return { summary, document: parsed }
+    return this.trackMapMutation(async () => {
+      const parsed = parseMindMapDocument(document)
+      await this.writeMapFile(parsed)
+      const summary = await this.summaryFor(parsed)
+      await this.syncMapOrder()
+      return { summary, document: parsed }
+    })
   }
 
   async copyWorkspaceAsset(relativePath: string, buffer: Buffer): Promise<string> {
-    const normalized = assertSafeRelative(relativePath)
-    const target = this.resolveAsset(normalized)
-    await fs.mkdir(path.dirname(target), { recursive: true })
-    await fs.writeFile(target, buffer, { flag: 'wx' }).catch((error: NodeJS.ErrnoException) => {
-      if (error.code !== 'EEXIST') throw error
+    return this.trackMapMutation(async () => {
+      const normalized = assertSafeRelative(relativePath)
+      const target = this.resolveAsset(normalized)
+      await fs.mkdir(path.dirname(target), { recursive: true })
+      await fs.writeFile(target, buffer, { flag: 'wx' }).catch((error: NodeJS.ErrnoException) => {
+        if (error.code !== 'EEXIST') throw error
+      })
+      return normalized
     })
-    return normalized
   }
 
-  async readWorkspaceAsset(relativePath: string): Promise<Buffer> {
-    return fs.readFile(this.resolveAsset(relativePath))
+  async readWorkspaceAsset(relativePath: string, maxBytes?: number): Promise<Buffer> {
+    const requested = this.resolveAsset(relativePath)
+    if (maxBytes === undefined) return fs.readFile(requested)
+    const base = path.join(this.assertOpen(), 'assets')
+    const baseStat = await fs.lstat(base)
+    if (!baseStat.isDirectory() || baseStat.isSymbolicLink()) throw new AppError('INVALID_PATH', '素材目录不能是链接')
+    const resolvedBase = await fs.realpath(base)
+    const resolved = await fs.realpath(requested)
+    if (!resolved.startsWith(resolvedBase + path.sep)) throw new AppError('INVALID_PATH', '素材链接越界')
+    const file = await fs.open(resolved, 'r')
+    try {
+      const stat = await file.stat()
+      if (!stat.isFile() || stat.size > maxBytes) throw new AppError('IMAGE_TOO_LARGE', '单张图片不能超过 25MB')
+      const chunks: Buffer[] = []
+      let size = 0
+      for await (const chunk of file.createReadStream({ highWaterMark: 65536, autoClose: false })) {
+        const bytes = chunk as Buffer
+        size += bytes.length
+        if (size > maxBytes) throw new AppError('IMAGE_TOO_LARGE', '单张图片不能超过 25MB')
+        chunks.push(bytes)
+      }
+      return Buffer.concat(chunks, size)
+    } finally {
+      await file.close()
+    }
   }
 
   async commitNewMap(document: MindMapDocument): Promise<{ summary: MapSummary; document: MindMapDocument }> {
-    const id = randomUUID()
-    const parsed = parseMindMapDocument({ ...document, id })
-    await this.writeMapFile(parsed)
-    const summary = await this.summaryFor(parsed)
-    await this.syncMapOrder()
-    return { summary, document: parsed }
+    return this.trackMapMutation(async () => {
+      const id = randomUUID()
+      const parsed = parseMindMapDocument({ ...document, id })
+      await this.writeMapFile(parsed)
+      const summary = await this.summaryFor(parsed)
+      await this.syncMapOrder()
+      return { summary, document: parsed }
+    })
+  }
+
+  /** 固定目标工作区并阻止并发修改，文件提交成功后才更新内存索引。 */
+  async importMapPackage(
+    document: MindMapDocument,
+    assets: Map<string, Buffer>,
+    overwrite: boolean,
+    expectedWorkspace: string
+  ): Promise<{ summary: MapSummary; document: MindMapDocument; overwritten: boolean }> {
+    this.assertWritable()
+    const workspacePath = this.assertOpen()
+    if (workspacePath !== expectedWorkspace || !this.meta) throw new AppError('MAP_PACKAGE_STALE', '导入工作区已变化')
+    this.packageImporting = true
+    try {
+      await Promise.allSettled([...this.mapMutations])
+      const parsed = parseMindMapDocument({ ...document, id: overwrite ? document.id : randomUUID() })
+      const result = await commitMapPackageFiles(workspacePath, parsed, assets, overwrite)
+      this.meta = result.meta
+      return { summary: await this.summaryFor(parsed), document: parsed, overwritten: result.overwritten }
+    } finally {
+      this.packageImporting = false
+    }
   }
 
   async deleteMapDocumentIfExists(documentId: string): Promise<void> {
-    await fs.unlink(this.mapPath(documentId)).catch((error: NodeJS.ErrnoException) => {
-      if (error.code !== 'ENOENT') throw error
+    return this.trackMapMutation(async () => {
+      await fs.unlink(this.mapPath(documentId)).catch((error: NodeJS.ErrnoException) => {
+        if (error.code !== 'ENOENT') throw error
+      })
     })
   }
 
@@ -336,16 +398,18 @@ export class WorkspaceService {
     expectedHash?: string,
     force = false
   ): Promise<{ hash: string }> {
-    if (!force && expectedHash) {
-      const current = await this.mapHash(document.id)
-      if (current && current !== expectedHash) {
-        throw new AppError('FILE_CONFLICT', '文件已在其他位置被修改', current)
+    return this.trackMapMutation(async () => {
+      if (!force && expectedHash) {
+        const current = await this.mapHash(document.id)
+        if (current && current !== expectedHash) {
+          throw new AppError('FILE_CONFLICT', '文件已在其他位置被修改', current)
+        }
       }
-    }
-    const content = `${JSON.stringify(document, null, 2)}\n`
-    await atomicWrite(this.mapPath(document.id), content)
-    await this.syncMapOrder()
-    return { hash: sha256(content) }
+      const content = `${JSON.stringify(document, null, 2)}\n`
+      await atomicWrite(this.mapPath(document.id), content)
+      await this.syncMapOrder()
+      return { hash: sha256(content) }
+    })
   }
 
   async saveMapCopy(document: MindMapDocument): Promise<string | null> {
@@ -360,11 +424,13 @@ export class WorkspaceService {
   }
 
   async trashMap(mapId: string): Promise<void> {
-    await this.createSnapshot(mapId)
-    await shell.trashItem(this.mapPath(mapId))
-    const sessionPath = path.join(this.assertOpen(), 'maps', `${mapId}.ai-session.json`)
-    await shell.trashItem(sessionPath).catch(() => undefined)
-    await this.syncMapOrder()
+    return this.trackMapMutation(async () => {
+      await this.createSnapshot(mapId)
+      await shell.trashItem(this.mapPath(mapId))
+      const sessionPath = path.join(this.assertOpen(), 'maps', `${mapId}.ai-session.json`)
+      await shell.trashItem(sessionPath).catch(() => undefined)
+      await this.syncMapOrder()
+    })
   }
 
   async createSnapshot(mapId: string): Promise<SnapshotSummary> {
@@ -410,30 +476,16 @@ export class WorkspaceService {
   }
 
   private async importAssetBuffer(buffer: Buffer, originalName: string): Promise<string> {
-    const extension = extensionOf(originalName)
-    if (!IMAGE_TYPES.has(extension)) {
-      throw new AppError('UNSUPPORTED_IMAGE', '仅支持 PNG、JPEG、WebP 和 GIF 图片')
-    }
-    if (buffer.length > 25 * 1024 * 1024) throw new AppError('IMAGE_TOO_LARGE', '单张图片不能超过 25MB')
-    const isPng = buffer.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))
-    const isJpeg = buffer.subarray(0, 3).equals(Buffer.from([0xff, 0xd8, 0xff]))
-    const isGif = ['GIF87a', 'GIF89a'].includes(buffer.subarray(0, 6).toString('ascii'))
-    const isWebp = buffer.subarray(0, 4).toString('ascii') === 'RIFF' && buffer.subarray(8, 12).toString('ascii') === 'WEBP'
-    if (
-      (extension === '.png' && !isPng) ||
-      ((extension === '.jpg' || extension === '.jpeg') && !isJpeg) ||
-      (extension === '.gif' && !isGif) ||
-      (extension === '.webp' && !isWebp)
-    ) {
-      throw new AppError('INVALID_IMAGE', '图片内容与扩展名不匹配')
-    }
-    const hash = sha256(buffer).slice(0, 32)
-    const relativePath = `assets/${hash}${extension === '.jpeg' ? '.jpg' : extension}`
-    const target = this.resolveAsset(relativePath)
-    await fs.writeFile(target, buffer, { flag: 'wx' }).catch(async (error: NodeJS.ErrnoException) => {
-      if (error.code !== 'EEXIST') throw error
+    return this.trackMapMutation(async () => {
+      const { extension } = validateImage(buffer, originalName)
+      const hash = sha256(buffer).slice(0, 32)
+      const relativePath = `assets/${hash}${extension === '.jpeg' ? '.jpg' : extension}`
+      const target = this.resolveAsset(relativePath)
+      await fs.writeFile(target, buffer, { flag: 'wx' }).catch(async (error: NodeJS.ErrnoException) => {
+        if (error.code !== 'EEXIST') throw error
+      })
+      return relativePath
     })
-    return relativePath
   }
 
   async importAssetDialog(): Promise<string | null> {
@@ -456,30 +508,32 @@ export class WorkspaceService {
     summary: MapSummary
     warnings: string[]
   } | null> {
-    const selection = await dialog.showOpenDialog({
-      title: '导入 Markdown',
-      properties: ['openFile'],
-      filters: [{ name: 'Markdown', extensions: ['md', 'markdown'] }]
+    return this.trackMapMutation(async () => {
+      const selection = await dialog.showOpenDialog({
+        title: '导入 Markdown',
+        properties: ['openFile'],
+        filters: [{ name: 'Markdown', extensions: ['md', 'markdown'] }]
+      })
+      if (selection.canceled || !selection.filePaths[0]) return null
+      const sourcePath = selection.filePaths[0]
+      const sourceDirectory = path.dirname(sourcePath)
+      const markdown = await fs.readFile(sourcePath, 'utf8')
+      const result = await importMarkdownToMindMap({
+        fileName: path.basename(sourcePath),
+        markdown,
+        rewriteImage: async (source) => {
+          if (/^[a-z]+:\/\//i.test(source)) return source
+          const decoded = decodeURIComponent(source.split('#')[0]?.split('?')[0] ?? source)
+          const absolute = path.resolve(sourceDirectory, decoded)
+          const buffer = await fs.readFile(absolute)
+          return this.importAssetBuffer(buffer, absolute)
+        }
+      })
+      await this.writeMapFile(result.document)
+      const summary = await this.summaryFor(result.document)
+      await this.syncMapOrder()
+      return { document: result.document, summary, warnings: result.warnings }
     })
-    if (selection.canceled || !selection.filePaths[0]) return null
-    const sourcePath = selection.filePaths[0]
-    const sourceDirectory = path.dirname(sourcePath)
-    const markdown = await fs.readFile(sourcePath, 'utf8')
-    const result = await importMarkdownToMindMap({
-      fileName: path.basename(sourcePath),
-      markdown,
-      rewriteImage: async (source) => {
-        if (/^[a-z]+:\/\//i.test(source)) return source
-        const decoded = decodeURIComponent(source.split('#')[0]?.split('?')[0] ?? source)
-        const absolute = path.resolve(sourceDirectory, decoded)
-        const buffer = await fs.readFile(absolute)
-        return this.importAssetBuffer(buffer, absolute)
-      }
-    })
-    await this.writeMapFile(result.document)
-    const summary = await this.summaryFor(result.document)
-    await this.syncMapOrder()
-    return { document: result.document, summary, warnings: result.warnings }
   }
 
   async saveExport(request: ExportRequest): Promise<string | null> {

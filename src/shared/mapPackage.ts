@@ -4,6 +4,15 @@ export const MAP_PACKAGE_VERSION = 1
 export const MAP_PACKAGE_KIND = 'map'
 export const MAP_PACKAGE_EXTENSION = 'zmap'
 
+export const MAP_PACKAGE_LIMITS = {
+  compressedBytes: 100 * 1024 * 1024,
+  unpackedBytes: 150 * 1024 * 1024,
+  imageBytes: 25 * 1024 * 1024,
+  jsonBytes: 10 * 1024 * 1024,
+  assets: 200,
+  entries: 202
+} as const
+
 const PACKAGE_IMAGE_MIME = new Set(['image/png', 'image/jpeg', 'image/webp', 'image/gif'])
 const SHA256_PATTERN = /^[0-9a-f]{64}$/
 const MAP_ID_PATTERN = /^[a-zA-Z0-9-]{1,120}$/
@@ -40,11 +49,11 @@ function cleanText(value: unknown, maxLength: number): string {
 
 /** 归一化包内条目路径，拒绝绝对路径、盘符与上跳路径；非法时返回 null。 */
 export function normalizePackageEntryPath(value: string): string | null {
-  const normalized = value.replace(/\\/g, '/')
-  if (!normalized || normalized.includes('\0')) return null
-  if (normalized.startsWith('/') || /^[a-zA-Z]:/.test(normalized)) return null
-  if (normalized.split('/').includes('..')) return null
-  return normalized
+  if (!value || value.length > 300 || /[\\<>:"|?*\u0000-\u001f]/.test(value) || value.startsWith('/')) return null
+  const parts = value.split('/')
+  if (parts.some((part) => !part || part === '.' || part === '..' || /[. ]$/.test(part) ||
+      /^(?:con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\.|$)/i.test(part))) return null
+  return value
 }
 
 /** 工程包只允许 manifest.json、map.json 与 assets/ 目录下的文件。 */
@@ -73,20 +82,24 @@ export function parseMapPackageManifest(raw: unknown): MapPackageManifest {
 
   const assetsRaw = raw.assets ?? {}
   if (!isRecord(assetsRaw)) throw new MapPackageError('MAP_PACKAGE_INVALID', '工程包资源清单无效')
+  if (Object.keys(assetsRaw).length > MAP_PACKAGE_LIMITS.assets) throw new MapPackageError('MAP_PACKAGE_TOO_LARGE', '工程包图片数量过多')
   const assets: Record<string, MapPackageAsset> = {}
+  const assetNames = new Set<string>()
   for (const [key, value] of Object.entries(assetsRaw)) {
     if (!isRecord(value)) throw new MapPackageError('MAP_PACKAGE_ASSET_INVALID', `工程包资源条目无效：${key}`)
-    const assetPath = cleanText(value.path, 300)
-    if (!assetPath || !assetPath.startsWith('assets/') || !isAllowedPackageEntry(assetPath)) {
+    const assetPath = typeof value.path === 'string' ? value.path : ''
+    if (key !== assetPath || !assetPath.startsWith('assets/') || !isAllowedPackageEntry(assetPath)) {
       throw new MapPackageError('MAP_PACKAGE_PATH_INVALID', `工程包资源路径无效：${assetPath || key}`)
     }
+    if (assetNames.has(assetPath.toLowerCase())) throw new MapPackageError('MAP_PACKAGE_PATH_INVALID', '工程包资源路径冲突')
+    assetNames.add(assetPath.toLowerCase())
     if (typeof value.sha256 !== 'string' || !SHA256_PATTERN.test(value.sha256)) {
       throw new MapPackageError('MAP_PACKAGE_ASSET_INVALID', `工程包资源校验值无效：${assetPath}`)
     }
     if (typeof value.mime !== 'string' || !PACKAGE_IMAGE_MIME.has(value.mime)) {
       throw new MapPackageError('MAP_PACKAGE_ASSET_UNSUPPORTED', `工程包图片格式不受支持：${assetPath}`)
     }
-    if (!isFiniteNumber(value.size) || value.size < 0) {
+    if (!isFiniteNumber(value.size) || !Number.isSafeInteger(value.size) || value.size <= 0 || value.size > MAP_PACKAGE_LIMITS.imageBytes) {
       throw new MapPackageError('MAP_PACKAGE_ASSET_INVALID', `工程包资源大小无效：${assetPath}`)
     }
     assets[assetPath] = { path: assetPath, sha256: value.sha256, mime: value.mime, size: Math.floor(value.size) }

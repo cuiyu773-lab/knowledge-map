@@ -2,6 +2,8 @@ import { _electron as electron, expect, test, type ElectronApplication, type Pag
 import { mkdir, mkdtemp, readdir, readFile, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
+import { createHash } from 'node:crypto'
+import { createMindMapDocument } from '../../src/shared/schema'
 import { strFromU8, unzipSync } from 'fflate'
 
 async function stubSaveDialog(app: ElectronApplication, filePath: string): Promise<void> {
@@ -37,6 +39,10 @@ test('可导出工程包、导入为副本、覆盖导入并拒绝损坏包', as
     mkdir(appData, { recursive: true })
   ])
   const now = new Date().toISOString()
+  const image = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jVZkAAAAASUVORK5CYII=', 'base64')
+  const initial = createMindMapDocument('package-e2e-map', 'package-e2e-root', '我的学习导图', now)
+  initial.nodes[initial.rootId]!.detailMarkdown = '![图片](assets/package-image.png)'
+  const imagePath = 'assets/' + createHash('sha256').update(image).digest('hex') + '.png'
   await Promise.all([
     writeFile(
       path.join(workspace, 'workspace.json'),
@@ -47,7 +53,9 @@ test('可导出工程包、导入为副本、覆盖导入并拒绝损坏包', as
       JSON.stringify([{ path: workspace, name: '工程包测试工作区', lastOpenedAt: now }], null, 2)
     ),
     writeFile(path.join(userData, 'settings.json'), JSON.stringify({ theme: 'light', panels: { outline: true, inspector: true }, exportQuality: 'high' }, null, 2)),
-    writeFile(brokenFile, '这不是一个 zip 工程包')
+    writeFile(brokenFile, '这不是一个 zip 工程包'),
+    writeFile(path.join(workspace, 'maps', initial.id + '.mindmap.json'), JSON.stringify(initial, null, 2)),
+    writeFile(path.join(workspace, 'assets/package-image.png'), image)
   ])
 
   const app = await electron.launch({
@@ -90,7 +98,8 @@ test('可导出工程包、导入为副本、覆盖导入并拒绝损坏包', as
     expect(manifest.kind).toBe('map')
     expect(manifest.map.title).toBe('我的学习导图')
     expect(manifest.map.nodeCount).toBe(2)
-    expect(Object.keys(manifest.assets)).toHaveLength(0)
+    expect(Object.keys(manifest.assets)).toEqual([imagePath])
+    expect(Buffer.from(archive[imagePath]!)).toEqual(image)
     const packagedMap = JSON.parse(strFromU8(archive['map.json']!)) as { id: string; nodes: Record<string, { title: string }> }
     expect(packagedMap.id).toBe(manifest.map.id)
     expect(Object.values(packagedMap.nodes).some((node) => node.title === '工程包节点')).toBe(true)
