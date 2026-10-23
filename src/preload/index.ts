@@ -12,6 +12,9 @@ import type {
   AiPublicConfig,
   AiSession,
   ExportRequest,
+  MapImportStrategy,
+  MapPackageImportResult,
+  MapPackagePreview,
   MapReadResult,
   MapSummary,
   MaterialSummary,
@@ -53,7 +56,11 @@ const api = {
       invoke<{ hash: string }>(IPC.saveMap, document, expectedHash, force),
     saveCopy: (document: MindMapDocument) => invoke<string | null>(IPC.saveMapCopy, document),
     hash: (mapId: string) => invoke<string | null>(IPC.mapHash, mapId),
-    trash: (mapId: string) => invoke<void>(IPC.trashMap, mapId)
+    trash: (mapId: string) => invoke<void>(IPC.trashMap, mapId),
+    exportPackage: (document: MindMapDocument) => invoke<string | null>(IPC.exportMapPackage, document),
+    prepareImport: () => invoke<MapPackagePreview | null>(IPC.prepareMapImport),
+    commitImport: (importId: string, strategy: MapImportStrategy) =>
+      invoke<MapPackageImportResult>(IPC.commitMapImport, importId, strategy)
   },
   history: {
     create: (mapId: string) => invoke<SnapshotSummary>(IPC.createSnapshot, mapId),

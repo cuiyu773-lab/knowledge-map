@@ -98,7 +98,7 @@ export function parseMindMapDocument(raw: unknown): MindMapDocument {
   if (version > SCHEMA_VERSION) {
     throw new Error(`导图版本 ${version} 高于当前支持的版本 ${SCHEMA_VERSION}`)
   }
-  if (!Array.isArray(Object.values(raw.nodes ?? {})) && !isRecord(raw.nodes)) {
+  if (!isRecord(raw.nodes)) {
     throw new Error('导图文件缺少节点表')
   }
   const doc = raw as unknown as MindMapDocument
@@ -113,9 +113,35 @@ export function parseMindMapDocument(raw: unknown): MindMapDocument {
   ) {
     throw new Error('导图文件字段不完整')
   }
+  if (Object.keys(doc.nodes).length > 10000) throw new Error('导图节点数量超过 10000')
   const nodes = Object.values(doc.nodes)
   if (!nodes.length || nodes.some((node) => !isNode(node))) throw new Error('导图节点数据无效')
-  if (!doc.nodes[doc.rootId]) throw new Error('导图根节点不存在')
+  const own = (id: string) => Object.prototype.hasOwnProperty.call(doc.nodes, id)
+  if (!own(doc.rootId)) throw new Error('导图根节点不存在')
+  if (!isFiniteNumber(doc.viewport.x) || !isFiniteNumber(doc.viewport.y) ||
+      !isFiniteNumber(doc.viewport.zoom) || doc.viewport.zoom <= 0) throw new Error('导图视口数据无效')
+  const children = new Map<string, string[]>()
+  for (const [key, node] of Object.entries(doc.nodes)) {
+    if (!key || node.id !== key) throw new Error('节点表键与节点 ID 不一致')
+    if (key === doc.rootId) {
+      if (node.parentId !== null) throw new Error('导图根节点不能有父节点')
+    } else {
+      if (node.parentId === null || !own(node.parentId)) throw new Error('导图存在缺失的父节点')
+      const siblings = children.get(node.parentId) ?? []
+      siblings.push(key)
+      children.set(node.parentId, siblings)
+    }
+  }
+  const visited = new Set<string>()
+  const queue: Array<{ id: string; depth: number }> = [{ id: doc.rootId, depth: 0 }]
+  while (queue.length) {
+    const { id, depth } = queue.pop()!
+    if (visited.has(id)) throw new Error('导图存在循环引用')
+    if (depth > 256) throw new Error('导图层级超过 256')
+    visited.add(id)
+    for (const child of children.get(id) ?? []) queue.push({ id: child, depth: depth + 1 })
+  }
+  if (visited.size !== nodes.length) throw new Error('导图存在孤立节点或循环引用')
 
   const migrated: MindMapDocument = {
     ...doc,

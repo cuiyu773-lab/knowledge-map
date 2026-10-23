@@ -10,6 +10,7 @@ import type {
   ApiResult,
   AppSettings,
   ExportRequest,
+  MapImportStrategy,
   MindMapDocument,
   SaveStylePresetInput,
   SaveTemplateInput,
@@ -19,6 +20,7 @@ import type {
   WorkspaceDescriptor
 } from '@shared/types'
 import { AiService } from './ai'
+import { MapPackageService } from './mapPackage'
 import { TemplateService } from './templates'
 import { AppError, WorkspaceService } from './workspace'
 
@@ -26,6 +28,7 @@ const currentDirectory = dirname(fileURLToPath(import.meta.url))
 if (process.env.ZHITU_USER_DATA) app.setPath('userData', process.env.ZHITU_USER_DATA)
 const service = new WorkspaceService()
 const templateService = new TemplateService(service)
+const mapPackageService = new MapPackageService(service)
 const aiService = new AiService(service, templateService)
 let mainWindow: BrowserWindow | null = null
 
@@ -184,6 +187,9 @@ function registerIpc(): void {
   handle(IPC.importAssetBytes, (bytes: number[], name: string) => service.importAssetBytes(bytes, name))
   handle(IPC.importMarkdown, () => service.importMarkdown())
   handle(IPC.saveExport, (request: ExportRequest) => service.saveExport(request))
+  handle(IPC.exportMapPackage, (document: MindMapDocument) => mapPackageService.exportPackage(document))
+  handle(IPC.prepareMapImport, () => mapPackageService.prepareImport())
+  handle(IPC.commitMapImport, (importId: string, strategy: MapImportStrategy) => mapPackageService.commitImport(importId, strategy))
   handle(IPC.templatesList, () => templateService.listTemplates())
   handle(IPC.templatesGet, (id: string) => templateService.getTemplate(id))
   handle(IPC.templatesSave, (input: SaveTemplateInput) => templateService.saveTemplate(input))

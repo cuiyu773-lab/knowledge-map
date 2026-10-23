@@ -202,6 +202,48 @@ export interface MapReadResult {
   warning?: string
 }
 
+export interface MapPackageAsset {
+  path: string
+  sha256: string
+  mime: string
+  size: number
+}
+
+export interface MapPackageMapInfo {
+  id: string
+  title: string
+  nodeCount: number
+  createdAt: string
+  updatedAt: string
+}
+
+export interface MapPackageManifest {
+  packageVersion: 1
+  kind: 'map'
+  appVersion: string
+  exportedAt: string
+  map: MapPackageMapInfo
+  assets: Record<string, MapPackageAsset>
+}
+
+export type MapImportStrategy = 'overwrite' | 'rename'
+
+export interface MapPackagePreview {
+  importId: string
+  title: string
+  nodeCount: number
+  assetCount: number
+  totalBytes: number
+  exportedAt: string
+  conflict: { mapId: string; title: string } | null
+}
+
+export interface MapPackageImportResult {
+  summary: MapSummary
+  document: MindMapDocument
+  overwritten: boolean
+}
+
 export interface SnapshotSummary {
   fileName: string
   createdAt: string
